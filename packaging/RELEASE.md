@@ -5,8 +5,8 @@ This release process creates two files for each `APP_VERSION`:
 - `PhotoMeshStudio_Setup_<version>.exe` — complete offline installation
   with Python, Python packages, COLMAP, and GLOMAP.
 - `PhotoMeshStudio_Update_<version>.exe` — installs the new app into an
-  existing installation. It includes the Python runtime and tools when their
-  build fingerprint changed; otherwise it contains only app files.
+  existing installation. By default it contains only app files, so it is
+  much smaller than the full installer.
 
 Both files are created from the **new repository's checkout**. The runtime is
 read from a tested PhotoMeshStudio installation, and that installation is never
@@ -18,7 +18,7 @@ Use Inno Setup 7's `ISCC.exe`. Update `APP_VERSION` and `CHANGES.md`, run the
 test suite, then execute:
 
 ```powershell
-pwsh -File packaging/build_release.ps1 `
+powershell.exe -NoProfile -ExecutionPolicy Bypass -File packaging/build_release.ps1 `
   -RuntimeSource "C:\path\to\tested\PhotoMeshStudio" `
   -ISCC "C:\path\to\Inno Setup\ISCC.exe" `
   -OutputDir "C:\path\to\release-output" `
@@ -30,8 +30,14 @@ pwsh -File packaging/build_release.ps1 `
 `tools\colmap`, `tools\glomap`. The script checks that the copied
 runtime can import the app's main dependencies before compiling. It writes a
 SHA-256 file beside each EXE. Use a fresh stage directory for every build.
-Keep `StateDir\runtime.id` between releases; it tells the builder when the
-update must include a changed runtime.
+Keep `StateDir\runtime.id` between releases. If the runtime fingerprint
+changes, the default build stops instead of silently making a full-size
+updater. Build against the same tested runtime as the prior release to make
+a small update. When the runtime really must change, explicitly pass
+`-BundleRuntimeInUpdate`; that update EXE will be similar in size to Setup.
+The build log prints `bundled runtime: 0` for the small updater and `1` for
+the full runtime update. If `StateDir\runtime.id` is missing, verify the
+installed runtime ID before distributing the code-only updater.
 
 The EXEs are not code-signed. Sign them with your own certificate before
 public distribution. The full installer and updater use the same Inno Setup
