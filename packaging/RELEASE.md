@@ -26,9 +26,13 @@ powershell.exe -NoProfile -ExecutionPolicy Bypass -File packaging/build_release.
   -StateDir "C:\path\to\release-state"
 ```
 
-`RuntimeSource` must have `photomesh-studio\.venv` and
-`tools\colmap`, `tools\glomap`. The script checks that the copied
-runtime can import the app's main dependencies before compiling. It writes a
+`RuntimeSource` may be a tested development folder containing
+`photomesh-studio\.venv` and `tools\colmap`, `tools\glomap`, or the root of
+an existing installer-based installation containing `python\python.exe`,
+`app\runtime.id`, and the same `tools` folders. Reusing an installed runtime
+preserves its exact runtime ID, which is useful for a small app-only update.
+The script checks that the copied runtime can import the app's main
+dependencies before compiling. It writes a
 SHA-256 file beside each EXE. Use a fresh stage directory for every build.
 Keep `StateDir\runtime.id` between releases. If the runtime fingerprint
 changes, the default build stops instead of silently making a full-size
