@@ -1,0 +1,18 @@
+# Normalise text to LF in the repository; Windows scripts are checked out with CRLF.
+* text=auto
+*.py   text eol=lf
+*.md   text eol=lf
+*.txt  text eol=lf
+packaging/*.txt text eol=crlf
+*.ini  text eol=lf
+*.json text eol=lf
+*.cfg  text eol=lf
+*.bat  text eol=crlf
+*.cmd  text eol=crlf
+*.ps1  text eol=crlf
+# Binary data
+*.png  binary
+*.ico  binary
+*.shp  binary
+*.shx  binary
+*.dbf  binary

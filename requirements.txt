@@ -1,0 +1,8 @@
+PySide6>=6.6
+pyqtgraph>=0.13.3
+PyOpenGL>=3.1.7
+numpy>=1.24
+plyfile>=1.0
+Pillow>=10.0
+scipy>=1.11
+open3d>=0.18

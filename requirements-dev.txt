@@ -1,0 +1,4 @@
+-r requirements.txt
+pytest>=8
+pytest-qt>=4.4
+pyproj>=3.6
