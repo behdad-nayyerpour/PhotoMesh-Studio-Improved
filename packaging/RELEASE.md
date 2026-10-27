@@ -1,62 +1,30 @@
-# Build the Windows release EXEs
+# Build the Windows installer
 
-This release process creates two files for each `APP_VERSION`:
+Each release produces one offline file: `PhotoMeshStudio_Setup_<version>.exe`.
+It contains the app, Python, Python packages, COLMAP, and GLOMAP. Users run
+the new Setup on the existing installation; it replaces the managed app,
+Python, and tools folders. Projects, source photos, and processing results
+should be kept outside the installation folder.
 
-- `PhotoMeshStudio_Setup_<version>.exe` — complete offline installation
-  with Python, Python packages, COLMAP, and GLOMAP.
-- `PhotoMeshStudio_Update_<version>.exe` — installs the new app into an
-  existing installation. By default it contains only app files, so it is
-  much smaller than the full installer.
-
-Both files are created from the **new repository's checkout**. The runtime is
-read from a tested PhotoMeshStudio installation, and that installation is never
-modified. The output contains no project files or source photos.
-
-## Build
-
-Use Inno Setup 7's `ISCC.exe`. Update `APP_VERSION` and `CHANGES.md`, run the
-test suite, then execute:
+Build from the new repository checkout with Inno Setup 7:
 
 ```powershell
 powershell.exe -NoProfile -ExecutionPolicy Bypass -File packaging/build_release.ps1 `
-  -RuntimeSource "C:\path\to\tested\PhotoMeshStudio" `
+  -RuntimeSource "C:\path\to\installed\PhotoMesh Studio" `
   -ISCC "C:\path\to\Inno Setup\ISCC.exe" `
   -OutputDir "C:\path\to\release-output" `
-  -StageDir "C:\path\to\fresh-stage" `
-  -StateDir "C:\path\to\release-state"
+  -StageDir "C:\path\to\fresh-stage"
 ```
 
-`RuntimeSource` may be a tested development folder containing
-`photomesh-studio\.venv` and `tools\colmap`, `tools\glomap`, or the root of
-an existing installer-based installation containing `python\python.exe`,
-`app\runtime.id`, and the same `tools` folders. Reusing an installed runtime
-preserves its exact runtime ID, which is useful for a small app-only update.
-The script checks that the copied runtime can import the app's main
-dependencies before compiling. It writes a
-SHA-256 file beside each EXE. Use a fresh stage directory for every build.
-Keep `StateDir\runtime.id` between releases. If the runtime fingerprint
-changes, the default build stops instead of silently making a full-size
-updater. Build against the same tested runtime as the prior release to make
-a small update. When the runtime really must change, explicitly pass
-`-BundleRuntimeInUpdate`; that update EXE will be similar in size to Setup.
-The build log prints `bundled runtime: 0` for the small updater and `1` for
-the full runtime update. If `StateDir\runtime.id` is missing, verify the
-installed runtime ID before distributing the code-only updater.
+`RuntimeSource` may point to a tested development folder containing
+`photomesh-studio\.venv`, `tools\colmap`, and `tools\glomap`; or to an
+existing installer-based PhotoMesh Studio installation containing
+`python\python.exe`, `app\runtime.id`, and the two tools folders.
+The source is read but not changed. The builder validates copied Python
+packages, creates the Setup EXE, and writes a matching `.sha256` file.
+Choose a fresh stage directory for each build.
 
-The EXEs are not code-signed. Sign them with your own certificate before
-public distribution. The full installer and updater use the same Inno Setup
-AppId, and the updater checks the selected installation before changing files.
-Projects (`*.pmsx`, `*.files`) and original photos belong outside the app
-installation and are not included in either EXE.
-
-## Smoke check
-
-1. Install the full EXE to a clean test folder.
-2. Start PhotoMesh Studio and confirm COLMAP is found.
-3. Close the app and run the update EXE against that folder.
-4. Reopen the app and check Help > About.
-5. Test a small photo set with COLMAP/GPU on the target computer.
-
-The automated test suite covers source code. A real dense reconstruction needs
-a compatible NVIDIA driver and dataset, so verify it on the target hardware
-before releasing to other users.
+Before publishing, install the new Setup over a test installation, confirm
+Help > About shows the new version, and run a small real photo project on
+the target hardware. The automated test suite does not exercise a full
+COLMAP/GPU reconstruction. The EXE is not code signed.

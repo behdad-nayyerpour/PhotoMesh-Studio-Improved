@@ -15,19 +15,19 @@ inspected or copied. PhotoMesh Studio is not affiliated with Agisoft.
 
 ![screenshot](screenshot.png)
 
-## Install and update on Windows
+## Install on Windows
 
 Download the [latest release](https://github.com/behdad-nayyerpour/photomesh-studio-improved/releases/latest), then run **PhotoMeshStudio_Setup_0.1.15.exe**. It is a
 single offline installer containing Python, the required packages, COLMAP, and
 GLOMAP. It creates a Start menu shortcut and can optionally create a desktop
 shortcut. Python and Git do not need to be installed separately.
 
-For each later release, close the app and run the matching
-**PhotoMeshStudio_Update_<version>.exe**. It installs the new program files;
-when the Python runtime changes, the update includes that too. Projects,
-original photos, and processing results are stored outside the installer and
-are not removed. The update checks that PhotoMesh Studio is already installed
-in the selected folder.
+For each later release, close the app and run the new
+**PhotoMeshStudio_Setup_<version>.exe** over the existing EXE installation.
+Setup replaces the managed app, Python, and bundled tools folders. Keep
+projects, original photos, and processing results outside the installation
+folder; these external files are not removed. No separate Update EXE is
+published.
 
 To work from source instead of using the installer:
 
@@ -39,8 +39,8 @@ cd photomesh-studio-improved
 ```
 
 The private repository may ask you to sign in to GitHub during cloning. Source
-installations can use `update.bat`; EXE installations use the versioned update
-EXE. See [UPDATING.md](UPDATING.md).
+installations can use the legacy Git scripts; EXE installations use the full
+Setup file for every version. See [UPDATING.md](UPDATING.md).
 
 ### Install COLMAP when running from source
 
@@ -292,8 +292,9 @@ through the GUI in Fast and Exhaustive modes.
 **نصب روی ویندوز:** فایل `PhotoMeshStudio_Setup_0.1.15.exe` را اجرا کنید.
 این یک فایل نصبی آفلاین است و پایتون، COLMAP و GLOMAP را همراه دارد.
 برای هر نسخهٔ بعدی، برنامه را ببندید و فایل
-`PhotoMeshStudio_Update_<version>.exe` همان نسخه را اجرا کنید.
-پروژه‌ها و عکس‌های اصلی سر جای خود می‌مانند. راهنما: [UPDATING.md](UPDATING.md).
+`PhotoMeshStudio_Setup_<version>.exe` همان نسخه را روی نصب قبلی اجرا کنید.
+فایل Update جداگانه منتشر نمی‌شود. پروژه‌ها و عکس‌های اصلی را بیرون از پوشهٔ
+نصب نگه دارید؛ فایل‌های بیرونی پاک نمی‌شوند. راهنما: [UPDATING.md](UPDATING.md).
 
 برای اجرای کد منبع به‌جای فایل نصبی، دستورهای بخش انگلیسی را اجرا کنید.
 ساخت ابر نقاط متراکم به کارت NVIDIA و نسخهٔ سازگار CUDA نیاز دارد.

@@ -1,8 +1,8 @@
 # PhotoMesh Studio — installing on another Windows laptop (offline)
 
-> **Current installation:** run `PhotoMeshStudio_Setup_<version>.exe`. For every later release, run `PhotoMeshStudio_Update_<version>.exe`. Both are single offline files; see [UPDATING.md](UPDATING.md). The ZIP instructions below document older portable installations.
+> **Current installation:** run `PhotoMeshStudio_Setup_<version>.exe` for a new computer or a later version. It is one complete offline installer; see [UPDATING.md](UPDATING.md). The ZIP instructions below document older portable installations.
 >
-> **روش فعلی نصب:** فایل `PhotoMeshStudio_Setup_<version>.exe` را اجرا کنید و برای نسخه‌های بعدی فایل `PhotoMeshStudio_Update_<version>.exe` را به کار ببرید. دستورهای ZIP زیر مربوط به نصب‌های قدیمی است.
+> **روش فعلی نصب:** برای نصب تازه یا نسخه‌های بعدی، فایل `PhotoMeshStudio_Setup_<version>.exe` را اجرا کنید. فایل Update جداگانه منتشر نمی‌شود. دستورهای ZIP زیر مربوط به نصب‌های قدیمی است.
 
 
 [English](#english) · [فارسی](#فارسی)

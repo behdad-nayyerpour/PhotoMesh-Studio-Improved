@@ -1,24 +1,21 @@
 <#
-Build one Windows setup EXE and one versioned update EXE. Both contain their
-payload; recipients never extract a ZIP. Run from PowerShell with -RuntimeSource
+Build one complete Windows setup EXE. Each release carries the app, Python,
+COLMAP, and GLOMAP; recipients never extract a ZIP. Run from PowerShell with -RuntimeSource
 pointing to a tested development runtime (.venv and tools) or an existing
 installer-based PhotoMesh Studio installation (python, tools, app/runtime.id).
-The build reads that source and writes only to StageDir/OutputDir/StateDir.
+The build reads that source and writes only to StageDir/OutputDir.
 #>
 param(
     [Parameter(Mandatory=$true)][string]$RuntimeSource,
     [Parameter(Mandatory=$true)][string]$ISCC,
-    [switch]$BundleRuntimeInUpdate,
     [string]$OutputDir = (Join-Path $PSScriptRoot "..\dist"),
-    [string]$StageDir = (Join-Path $PSScriptRoot "..\release-stage"),
-    [string]$StateDir = (Join-Path $PSScriptRoot "..\release-state")
+    [string]$StageDir = (Join-Path $PSScriptRoot "..\release-stage")
 )
 $ErrorActionPreference = "Stop"
 $app = [IO.Path]::GetFullPath((Join-Path $PSScriptRoot ".."))
 $runtime = [IO.Path]::GetFullPath($RuntimeSource)
 $stage = [IO.Path]::GetFullPath($StageDir)
 $out = [IO.Path]::GetFullPath($OutputDir)
-$state = [IO.Path]::GetFullPath($StateDir)
 $compiler = [IO.Path]::GetFullPath($ISCC)
 if (-not (Test-Path -LiteralPath $compiler -PathType Leaf)) { throw "ISCC.exe not found: $compiler" }
 if (Test-Path -LiteralPath $stage) { throw "Stage already exists: $stage. Choose a fresh -StageDir." }
@@ -48,9 +45,8 @@ if ((Test-Path -LiteralPath $venvPy -PathType Leaf) -and (Test-Path -LiteralPath
 $versionText = Get-Content -LiteralPath (Join-Path $app "photomesh\__init__.py") -Raw
 if ($versionText -notmatch 'APP_VERSION\s*=\s*"([^"]+)"') { throw "APP_VERSION missing" }
 $version = $Matches[1]
-foreach ($name in @("PhotoMeshStudio_Setup_$version.exe", "PhotoMeshStudio_Update_$version.exe")) {
-    if (Test-Path -LiteralPath (Join-Path $out $name)) { throw "Output already exists: $name" }
-}
+$name = "PhotoMeshStudio_Setup_$version.exe"
+if (Test-Path -LiteralPath (Join-Path $out $name)) { throw "Output already exists: $name" }
 
 function Copy-Tree([string]$Source, [string]$Destination, [string[]]$ExcludeDirs = @(), [string[]]$ExcludeFiles = @()) {
     New-Item -ItemType Directory -Force -Path $Destination | Out-Null
@@ -62,7 +58,7 @@ function Copy-Tree([string]$Source, [string]$Destination, [string[]]$ExcludeDirs
     $global:LASTEXITCODE = 0
 }
 
-New-Item -ItemType Directory -Force -Path $stage, $out, $state | Out-Null
+New-Item -ItemType Directory -Force -Path $stage, $out | Out-Null
 Write-Host "Staging PhotoMesh Studio $version"
 $appStage = Join-Path $stage "app"
 Copy-Tree (Join-Path $app "photomesh") (Join-Path $appStage "photomesh") @("__pycache__") @("*.pyc", "*.log")
@@ -106,28 +102,12 @@ $env:PYTHONPATH = $appStage
 & (Join-Path $pythonStage "python.exe") -c "import PySide6, numpy, scipy, open3d, pyproj, photomesh; print('Runtime OK:', photomesh.APP_VERSION)"
 if ($LASTEXITCODE -ne 0) { throw "Copied Python runtime failed validation" }
 
-$priorIdPath = Join-Path $state "runtime.id"
-$includeRuntime = [int]$BundleRuntimeInUpdate.IsPresent
-if (Test-Path -LiteralPath $priorIdPath) {
-    $prior = (Get-Content -LiteralPath $priorIdPath -Raw).Trim()
-    if ($prior -ne $runtimeId -and -not $BundleRuntimeInUpdate) {
-        throw "Runtime differs from the previous build. A code-only updater would not work on that installation. Rebuild with the same tested runtime, or explicitly pass -BundleRuntimeInUpdate to include the full runtime."
-    }
-} elseif (-not $BundleRuntimeInUpdate) {
-    Write-Warning "No previous runtime.id in StateDir. This code-only updater will work only if the installed runtime ID matches $runtimeId."
-}
 Write-Host "Building full installer"
 $iss = Join-Path $PSScriptRoot "release.iss"
-& $compiler "/Q" "/DAppVersion=$version" "/DStageDir=$stage" "/DOutputDir=$out" "/DRuntimeId=$runtimeId" "/DUpdateOnly=0" "/DIncludeRuntimeInUpdate=0" $iss
+& $compiler "/Q" "/DAppVersion=$version" "/DStageDir=$stage" "/DOutputDir=$out" $iss
 if ($LASTEXITCODE -ne 0) { throw "Full installer compilation failed" }
-Write-Host "Building update installer (bundled runtime: $includeRuntime)"
-& $compiler "/Q" "/DAppVersion=$version" "/DStageDir=$stage" "/DOutputDir=$out" "/DRuntimeId=$runtimeId" "/DUpdateOnly=1" "/DIncludeRuntimeInUpdate=$includeRuntime" $iss
-if ($LASTEXITCODE -ne 0) { throw "Update installer compilation failed" }
-foreach ($name in @("PhotoMeshStudio_Setup_$version.exe", "PhotoMeshStudio_Update_$version.exe")) {
-    $file = Join-Path $out $name
-    $hash = (Get-FileHash -LiteralPath $file -Algorithm SHA256).Hash.ToLowerInvariant()
-    "$hash *$name" | Set-Content -LiteralPath "$file.sha256" -Encoding ascii
-    Write-Host "$name  $((Get-Item -LiteralPath $file).Length) bytes  SHA256 $hash"
-}
-Set-Content -LiteralPath $priorIdPath -Value $runtimeId -Encoding ascii
+$file = Join-Path $out $name
+$hash = (Get-FileHash -LiteralPath $file -Algorithm SHA256).Hash.ToLowerInvariant()
+"$hash *$name" | Set-Content -LiteralPath "$file.sha256" -Encoding ascii
+Write-Host "$name  $((Get-Item -LiteralPath $file).Length) bytes  SHA256 $hash"
 Write-Host "Release complete. Staging retained at $stage for verification."
