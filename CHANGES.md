@@ -10,6 +10,7 @@
 - Cleared stale Ortho points, markers, raster work and view position when creating or opening a project or switching chunks. Background view results from the previous project are ignored.
 - Added a GUI regression test for clearing the Photo and Ortho tabs.
 - No dependency changes; build a new Setup and Update EXE for this version.
+- The release builder now defaults to a small app-only Update EXE and stops if the previous runtime differs. Bundling the full runtime requires an explicit option.
 
 ### 0.1.14 (2026-10-27)
 
@@ -193,6 +194,7 @@ Needs **no new Python packages** (same 74 pinned wheels as 0.1.2). An existing p
 - نقاط سفید و سایر داده‌های نمای Ortho هنگام ساختن یا بازکردن پروژهٔ جدید و تغییر Chunk پاک می‌شوند؛ نتیجهٔ بارگذاری قدیمی هم دیگر روی پروژهٔ جدید اعمال نمی‌شود.
 - آزمون بازگشتی برای خالی‌شدن نماهای Photo و Ortho اضافه شد.
 - وابستگی جدیدی لازم نیست؛ برای این نسخه فایل‌های Setup و Update تازه بسازید.
+- ابزار ساخت اکنون به‌طور پیش‌فرض آپدیت کوچکِ فقط شامل برنامه می‌سازد و اگر محیط اجرایی با نسخهٔ قبل فرق کند، متوقف می‌شود. افزودن کل محیط اجرایی به آپدیت به گزینهٔ صریح نیاز دارد.
 
 ### 0.1.14 (2026-10-27)
 
