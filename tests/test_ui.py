@@ -75,6 +75,41 @@ def test_actions_with_photos_loaded(window, no_dialogs, image_dir, monkeypatch):
     assert no_dialogs == []
 
 
+
+@pytest.mark.parametrize("transition", ["new", "open", "chunk"])
+def test_project_switch_clears_photo_and_ortho_views(window, image_dir, tmp_path, transition):
+    from photomesh.project import Chunk, Project
+
+    photo = sorted(image_dir.iterdir())[0]
+    window.photo_view.open(str(photo), "Previous project")
+    window.photo_view.set_markers([("old", 10, 10, "pinned")])
+    window.current_photo = 0
+    window.tabs.setCurrentWidget(window.photo_view)
+    window.ortho_view.set_data(np.array([[1.0, 2.0, 3.0]]), [])
+    window.ortho_view.set_markers([("old", 1.0, 2.0)])
+    window.ortho_view.center = (1.0, 2.0)
+
+    if transition == "new":
+        window.new_project()
+    elif transition == "open":
+        path = str(tmp_path / "empty.pmsx")
+        Project().save(path)
+        window.open_project(path)
+    else:
+        window.project.chunks.append(Chunk())
+        window.set_active(1)
+
+    assert window.current_photo == -1
+    assert window.tabs.currentWidget() is window.model_view
+    assert window.photo_view.path is None
+    assert window.photo_view.view.scene().items() == []
+    assert window.photo_view.markers == []
+    assert window.ortho_view.pts is None
+    assert window.ortho_view.cams == []
+    assert window.ortho_view.markers == []
+    assert window.ortho_view.center is None
+
+
 def test_duplicate_photos_ignored(window, image_dir):
     paths = sorted(str(p) for p in image_dir.iterdir())
     window.add_photos(paths)

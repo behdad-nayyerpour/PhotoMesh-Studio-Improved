@@ -136,11 +136,25 @@ class OrthoView(QWidget):
         self._status_timer.timeout.connect(lambda: self.coordinatesChanged.emit(self.coord_text))
 
     # ------------------------------------------------------------------ data
-    def set_data(self, pts=None, cams=None):
-        if pts is not None:
+    def set_data(self, pts=None, cams=None, *, clear_points=False):
+        if clear_points:
+            self.pts = None
+        elif pts is not None:
             self.pts = np.asarray(pts)[::max(1, len(pts) // 50000)]
         if cams is not None:
             self.cams = cams
+        self.update()
+
+    def reset_project(self):
+        """Release all data and pending raster work from the previous project."""
+        self.clear_rasters()
+        self.gen += 1
+        self.cache.clear(); self.pending.clear()
+        self.pts = None; self.cams = []; self.markers = []; self.shapes = []
+        self.selected_shape = None
+        self.center = None; self.scale = 1.0
+        self.coord_text = ""; self.last_world = None; self._drag = None
+        self.coordinatesChanged.emit("")
         self.update()
 
     def set_frame(self, offset=None, geographic=False, unit="m"):

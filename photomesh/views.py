@@ -937,6 +937,16 @@ class PhotoView(QWidget):
         else:
             self.addMarker.emit(float(x), float(y))
 
+    def clear(self):
+        """Drop the displayed photo and overlays when the project changes."""
+        sc = self.view.scene()
+        sc.clear(); sc.setSceneRect(0, 0, 0, 0)
+        self.view.resetTransform()
+        self.path = None; self._pix = None
+        self._overlay = []; self._shape_items = []
+        self.shapes = []; self.markers = []; self.active_marker = None
+        self.caption.setText("Double-click a photo in the Photos pane to open it.")
+
     def open(self, path, caption=""):
         pm = QPixmap(path)
         sc = self.view.scene(); sc.clear(); self._overlay = []; self._shape_items = []; self._pix = None

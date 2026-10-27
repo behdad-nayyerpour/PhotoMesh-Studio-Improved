@@ -610,7 +610,7 @@ class MainWindow(ReferenceMixin, MarkerEditMixin, ShapesMixin, QMainWindow):
         if cams and self.model_view.gl is not None:
             self.model_view.fit_raw(np.array([c[0] for c in cams], np.float32))
         self.model_view.set_cameras(cams, labels=[c.label for c in ch.cameras if c.aligned and c.est and c.rot])
-        self.ortho_view.set_data(None, [c.est for c in ch.cameras if c.est])
+        self.ortho_view.set_data(None, [c.est for c in ch.cameras if c.est], clear_points=True)
         self.load_ortho_view()
         self.selected_shape = None
         try:
@@ -728,6 +728,7 @@ class MainWindow(ReferenceMixin, MarkerEditMixin, ShapesMixin, QMainWindow):
     def set_active(self, ci):
         if 0 <= ci < len(self.project.chunks) and ci != self.project.active:
             self.project.active = ci
+            self._reset_project_views()
             self.refresh_all(); self.reload_view()
 
     # ------------------------------------------------------- layer visibility
@@ -909,10 +910,19 @@ class MainWindow(ReferenceMixin, MarkerEditMixin, ShapesMixin, QMainWindow):
             return self.save_project()
         return r == QMessageBox.Discard
 
+    def _reset_project_views(self):
+        """Discard view state belonging to the project or chunk being replaced."""
+        self._view_gen += 1
+        self.view_loading = False; self.view_progress.hide()
+        self.current_photo = -1
+        self.photo_view.clear()
+        self.ortho_view.reset_project()
+        self.tabs.setCurrentWidget(self.model_view)
+
     def new_project(self):
         if self._confirm_discard():
             self.project = Project(); self.console.ns["project"] = self.project
-            self.model_view.clear(); self.refresh_all(); self.reload_view()
+            self._reset_project_views(); self.refresh_all(); self.reload_view()
 
     def open_project(self, path=None):
         if not self._confirm_discard():
@@ -925,6 +935,7 @@ class MainWindow(ReferenceMixin, MarkerEditMixin, ShapesMixin, QMainWindow):
                 import traceback
                 self.show_error("Open", f"Cannot open project:\n{e}", step="Open project",
                                 traceback_text=traceback.format_exc(), worker=False); return
+            self._reset_project_views()
             self.console.ns["project"] = self.project
             if self.project.relocated:
                 self.project.modified = True

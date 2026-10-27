@@ -4,6 +4,13 @@
 
 ## English
 
+### 0.1.15 (2026-10-27)
+
+- Fixed File > New leaving the previous photo visible after the workspace becomes empty.
+- Cleared stale Ortho points, markers, raster work and view position when creating or opening a project or switching chunks. Background view results from the previous project are ignored.
+- Added a GUI regression test for clearing the Photo and Ortho tabs.
+- No dependency changes; build a new Setup and Update EXE for this version.
+
 ### 0.1.14 (2026-10-27)
 
 - Keypoint selection now loads one image's feature and descriptor BLOBs from SQLite at a time, avoiding a memory spike proportional to the whole photo set. In a 40-image synthetic read, peak Python memory fell from about 22 MiB to 1.1 MiB; the read took 0.035 s instead of 0.021 s.
@@ -179,6 +186,13 @@ Needs **no new Python packages** (same 74 pinned wheels as 0.1.2). An existing p
 <div dir="rtl">
 
 ## فارسی
+
+### 0.1.15 (2026-10-27)
+
+- پس از File > New، عکس پروژهٔ قبلی از نمای Photo پاک می‌شود.
+- نقاط سفید و سایر داده‌های نمای Ortho هنگام ساختن یا بازکردن پروژهٔ جدید و تغییر Chunk پاک می‌شوند؛ نتیجهٔ بارگذاری قدیمی هم دیگر روی پروژهٔ جدید اعمال نمی‌شود.
+- آزمون بازگشتی برای خالی‌شدن نماهای Photo و Ortho اضافه شد.
+- وابستگی جدیدی لازم نیست؛ برای این نسخه فایل‌های Setup و Update تازه بسازید.
 
 ### 0.1.14 (2026-10-27)
 
