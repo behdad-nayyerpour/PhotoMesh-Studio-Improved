@@ -7,6 +7,7 @@ The build reads that installation and writes only to StageDir/OutputDir/StateDir
 param(
     [Parameter(Mandatory=$true)][string]$RuntimeSource,
     [Parameter(Mandatory=$true)][string]$ISCC,
+    [switch]$BundleRuntimeInUpdate,
     [string]$OutputDir = (Join-Path $PSScriptRoot "..\dist"),
     [string]$StageDir = (Join-Path $PSScriptRoot "..\release-stage"),
     [string]$StateDir = (Join-Path $PSScriptRoot "..\release-state")
@@ -85,10 +86,14 @@ $env:PYTHONPATH = $appStage
 if ($LASTEXITCODE -ne 0) { throw "Copied Python runtime failed validation" }
 
 $priorIdPath = Join-Path $state "runtime.id"
-$includeRuntime = 0
+$includeRuntime = [int]$BundleRuntimeInUpdate.IsPresent
 if (Test-Path -LiteralPath $priorIdPath) {
     $prior = (Get-Content -LiteralPath $priorIdPath -Raw).Trim()
-    if ($prior -ne $runtimeId) { $includeRuntime = 1 }
+    if ($prior -ne $runtimeId -and -not $BundleRuntimeInUpdate) {
+        throw "Runtime differs from the previous build. A code-only updater would not work on that installation. Rebuild with the same tested runtime, or explicitly pass -BundleRuntimeInUpdate to include the full runtime."
+    }
+} elseif (-not $BundleRuntimeInUpdate) {
+    Write-Warning "No previous runtime.id in StateDir. This code-only updater will work only if the installed runtime ID matches $runtimeId."
 }
 Write-Host "Building full installer"
 $iss = Join-Path $PSScriptRoot "release.iss"
