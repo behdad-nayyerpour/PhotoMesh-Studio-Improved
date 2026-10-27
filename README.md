@@ -17,7 +17,7 @@ inspected or copied. PhotoMesh Studio is not affiliated with Agisoft.
 
 ## Install and update on Windows
 
-Download the [latest release](https://github.com/behdad-nayyerpour/photomesh-studio-improved/releases/latest), then run **PhotoMeshStudio_Setup_0.1.13.exe**. It is a
+Download the [latest release](https://github.com/behdad-nayyerpour/photomesh-studio-improved/releases/latest), then run **PhotoMeshStudio_Setup_0.1.14.exe**. It is a
 single offline installer containing Python, the required packages, COLMAP, and
 GLOMAP. It creates a Start menu shortcut and can optionally create a desktop
 shortcut. Python and Git do not need to be installed separately.
@@ -289,7 +289,7 @@ through the GUI in Fast and Exhaustive modes.
 منوها و روند کارش شبیه نرم‌افزارهای حرفه‌ای فتوگرامتری است (بر اساس مستندات عمومی).
 همه‌ی کدها، ظاهر و آیکون‌ها از خودمان است.
 
-**نصب روی ویندوز:** فایل `PhotoMeshStudio_Setup_0.1.13.exe` را اجرا کنید.
+**نصب روی ویندوز:** فایل `PhotoMeshStudio_Setup_0.1.14.exe` را اجرا کنید.
 این یک فایل نصبی آفلاین است و پایتون، COLMAP و GLOMAP را همراه دارد.
 برای هر نسخهٔ بعدی، برنامه را ببندید و فایل
 `PhotoMeshStudio_Update_<version>.exe` همان نسخه را اجرا کنید.

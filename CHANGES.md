@@ -4,6 +4,12 @@
 
 ## English
 
+### 0.1.14 (2026-10-27)
+
+- Keypoint selection now loads one image's feature and descriptor BLOBs from SQLite at a time, avoiding a memory spike proportional to the whole photo set. In a 40-image synthetic read, peak Python memory fell from about 22 MiB to 1.1 MiB; the read took 0.035 s instead of 0.021 s.
+- When Windows cannot create photo links, unchanged staged photo copies are reused on later runs. Changed sources, replaced photos, and modified staged copies are refreshed.
+- No dependency changes. The versioned update EXE contains the app changes; the full installer remains available for new installations.
+
 ### 0.1.13 (2026-10-27)
 
 - Fixed CUDA detection when COLMAP fails to return a help banner: the app now reports CPU-only instead of assuming CUDA is available.
@@ -173,6 +179,12 @@ Needs **no new Python packages** (same 74 pinned wheels as 0.1.2). An existing p
 <div dir="rtl">
 
 ## فارسی
+
+### 0.1.14 (2026-10-27)
+
+- انتخاب نقاط کلیدی اکنون داده‌های هر عکس را جداگانه از SQLite می‌خواند تا حافظه با تعداد کل عکس‌ها رشد نکند. در نمونهٔ آزمایشی ۴۰عکسی، اوج حافظهٔ مرحلهٔ خواندن از حدود ۲۲ به ۱٫۱ مگابایت رسید.
+- اگر ویندوز اجازهٔ ساخت لینک عکس را ندهد، کپی‌های بدون تغییر در اجرای بعدی دوباره کپی نمی‌شوند. با تغییر عکس اصلی یا فایل آماده‌شده، کپی تازه ساخته می‌شود.
+- وابستگی جدیدی اضافه نشده است؛ فایل آپدیت نسخه‌دار فقط تغییرات برنامه را حمل می‌کند.
 
 ### 0.1.13 (2026-10-27)
 

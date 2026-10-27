@@ -376,6 +376,31 @@ def test_select_keypoints_keeps_small_and_large(tmp_path):
     assert (dd[:, 0] == (kk[:, 0] - 1)).all()            # descriptors stay aligned
 
 
+
+
+def test_select_keypoints_skips_small_and_unsupported_images(tmp_path):
+    import numpy as np
+    db = str(tmp_path / "many.db")
+    con = sqlite3.connect(db)
+    con.execute("CREATE TABLE keypoints (image_id INTEGER PRIMARY KEY, rows INTEGER, cols INTEGER, data BLOB)")
+    con.execute("CREATE TABLE descriptors (image_id INTEGER PRIMARY KEY, rows INTEGER, cols INTEGER, data BLOB)")
+    for iid, n, cols in ((1, 40, 4), (2, 5, 4), (3, 40, 3), (4, 40, 6)):
+        kp = np.ones((n, cols), np.float32)
+        desc = np.full((n, 128), iid, np.uint8)
+        con.execute("INSERT INTO keypoints VALUES (?, ?, ?, ?)", (iid, n, cols, kp.tobytes()))
+        con.execute("INSERT INTO descriptors VALUES (?, ?, 128, ?)", (iid, n, desc.tobytes()))
+    con.commit()
+    before = dict(con.execute("SELECT image_id, data FROM keypoints"))
+    con.close()
+    assert fp.select_keypoints(db, 10) == 2
+    con = sqlite3.connect(db)
+    rows = dict(con.execute("SELECT image_id, rows FROM keypoints"))
+    after = dict(con.execute("SELECT image_id, data FROM keypoints"))
+    con.close()
+    assert rows == {1: 10, 2: 5, 3: 40, 4: 10}
+    assert after[2] == before[2] and after[3] == before[3]
+
+
 def _write_model_bin(d, img_w=400, img_h=300):
     import struct
     os.makedirs(d, exist_ok=True)

@@ -6,6 +6,7 @@ options the installed build understands.
 """
 from __future__ import annotations
 
+import json
 import os
 import re
 import shutil
@@ -370,7 +371,20 @@ def prepare_images(chunk, wd):
     else:
         root = os.path.join(wd, "images")
         os.makedirs(root, exist_ok=True)
-        mapping, used = {}, set()
+        manifest_path = os.path.join(wd, ".image_stage.json")
+        try:
+            with open(manifest_path, encoding="utf-8") as f:
+                previous = json.load(f)
+            if not isinstance(previous, dict):
+                previous = {}
+        except (OSError, ValueError):
+            previous = {}
+
+        def stamp(path):
+            st = os.stat(path)
+            return [st.st_dev, st.st_ino, st.st_size, st.st_mtime_ns, st.st_ctime_ns]
+
+        mapping, used, copied = {}, set(), {}
         for c in cams:
             base, ext = os.path.splitext(os.path.basename(c.path))
             name, i = base + ext, 1
@@ -378,23 +392,31 @@ def prepare_images(chunk, wd):
                 name = f"{base}_{i}{ext}"; i += 1
             used.add(name.lower()); mapping[c.path] = name
             dst = os.path.join(root, name)
+            source = os.path.normcase(os.path.abspath(c.path))
+            source_stamp = stamp(c.path)
             if os.path.lexists(dst):
-                # A previous run may have used another source with the same
-                # basename. Reuse only a link to this exact photo; copied
-                # files must be refreshed because their source may have changed.
                 try:
                     if os.path.samefile(c.path, dst):
-                        continue
+                        continue  # a link follows changes to the source automatically
+                    cached = previous.get(name)
+                    if cached == [source, source_stamp, stamp(dst)]:
+                        copied[name] = cached
+                        continue  # unchanged copy; avoid decoding/copying it again
                 except OSError:
                     pass
                 os.remove(dst)
             try:
                 os.link(c.path, dst)          # hard link: no admin rights needed on NTFS
-            except Exception:
+            except OSError:
                 try:
                     os.symlink(c.path, dst)
-                except Exception:
+                except OSError:
                     shutil.copy2(c.path, dst)
+                    copied[name] = [source, source_stamp, stamp(dst)]
+        tmp_manifest = manifest_path + ".part"
+        with open(tmp_manifest, "w", encoding="utf-8") as f:
+            json.dump(copied, f)
+        os.replace(tmp_manifest, manifest_path)
     with open(os.path.join(wd, "image_root.txt"), "w", encoding="utf-8") as f:
         f.write("images" if root == os.path.join(wd, "images") else root)   # relative: portable data folder
     with open(image_list(wd), "w", encoding="utf-8") as f:

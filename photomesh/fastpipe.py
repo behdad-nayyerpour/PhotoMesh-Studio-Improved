@@ -389,12 +389,16 @@ def select_keypoints(db, keep, small_frac=0.8):
     keeps only the largest scales) and 82 ms/pair for all 50k features."""
     con = sqlite3.connect(db)
     try:
-        rows = con.execute("SELECT k.image_id, k.rows, k.cols, k.data, d.cols, d.data FROM keypoints k "
-                           "JOIN descriptors d ON d.image_id = k.image_id").fetchall()
+        # Keep only small image IDs in memory. Feature and descriptor BLOBs can
+        # total gigabytes for a large survey; load one image at a time.
+        image_ids = [row[0] for row in con.execute(
+            "SELECT k.image_id FROM keypoints k JOIN descriptors d ON d.image_id = k.image_id "
+            "WHERE k.rows > ? AND k.cols IN (4, 6)", (keep,))]
         changed = 0
-        for iid, r, c, kb, dc, dbb in rows:
-            if r <= keep or c not in (4, 6):
-                continue
+        for iid in image_ids:
+            iid, r, c, kb, dc, dbb = con.execute(
+                "SELECT k.image_id, k.rows, k.cols, k.data, d.cols, d.data FROM keypoints k "
+                "JOIN descriptors d ON d.image_id = k.image_id WHERE k.image_id = ?", (iid,)).fetchone()
             k = np.frombuffer(kb, np.float32).reshape(r, c)
             scale = np.sqrt(np.abs(k[:, 2] * k[:, 5] - k[:, 3] * k[:, 4])) if c == 6 else k[:, 2]
             order = np.argsort(scale, kind="stable")
