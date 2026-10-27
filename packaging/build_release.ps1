@@ -1,8 +1,9 @@
 <#
 Build one Windows setup EXE and one versioned update EXE. Both contain their
 payload; recipients never extract a ZIP. Run from PowerShell with -RuntimeSource
-pointing to a tested PhotoMeshStudio installation that has .venv and tools.
-The build reads that installation and writes only to StageDir/OutputDir/StateDir.
+pointing to a tested development runtime (.venv and tools) or an existing
+installer-based PhotoMesh Studio installation (python, tools, app/runtime.id).
+The build reads that source and writes only to StageDir/OutputDir/StateDir.
 #>
 param(
     [Parameter(Mandatory=$true)][string]$RuntimeSource,
