@@ -45,8 +45,8 @@ if ((Test-Path -LiteralPath $venvPy -PathType Leaf) -and (Test-Path -LiteralPath
 $versionText = Get-Content -LiteralPath (Join-Path $app "photomesh\__init__.py") -Raw
 if ($versionText -notmatch 'APP_VERSION\s*=\s*"([^"]+)"') { throw "APP_VERSION missing" }
 $version = $Matches[1]
-$name = "PhotoMeshStudio_Setup_$version.exe"
-if (Test-Path -LiteralPath (Join-Path $out $name)) { throw "Output already exists: $name" }
+$installerName = "PhotoMeshStudio_Setup_$version.exe"
+if (Test-Path -LiteralPath (Join-Path $out $installerName)) { throw "Output already exists: $installerName" }
 
 function Copy-Tree([string]$Source, [string]$Destination, [string[]]$ExcludeDirs = @(), [string[]]$ExcludeFiles = @()) {
     New-Item -ItemType Directory -Force -Path $Destination | Out-Null
@@ -106,8 +106,8 @@ Write-Host "Building full installer"
 $iss = Join-Path $PSScriptRoot "release.iss"
 & $compiler "/Q" "/DAppVersion=$version" "/DStageDir=$stage" "/DOutputDir=$out" $iss
 if ($LASTEXITCODE -ne 0) { throw "Full installer compilation failed" }
-$file = Join-Path $out $name
+$file = Join-Path $out $installerName
 $hash = (Get-FileHash -LiteralPath $file -Algorithm SHA256).Hash.ToLowerInvariant()
-"$hash *$name" | Set-Content -LiteralPath "$file.sha256" -Encoding ascii
-Write-Host "$name  $((Get-Item -LiteralPath $file).Length) bytes  SHA256 $hash"
+"$hash *$installerName" | Set-Content -LiteralPath "$file.sha256" -Encoding ascii
+Write-Host "$installerName  $((Get-Item -LiteralPath $file).Length) bytes  SHA256 $hash"
 Write-Host "Release complete. Staging retained at $stage for verification."
