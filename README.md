@@ -17,7 +17,7 @@ inspected or copied. PhotoMesh Studio is not affiliated with Agisoft.
 
 ## Install and update on Windows
 
-For a normal installation, run **PhotoMeshStudio_Setup_0.1.13.exe**. It is a
+Download the [latest release](https://github.com/behdad-nayyerpour/photomesh-studio-improved/releases/latest), then run **PhotoMeshStudio_Setup_0.1.13.exe**. It is a
 single offline installer containing Python, the required packages, COLMAP, and
 GLOMAP. It creates a Start menu shortcut and can optionally create a desktop
 shortcut. Python and Git do not need to be installed separately.
@@ -42,7 +42,7 @@ The private repository may ask you to sign in to GitHub during cloning. Source
 installations can use `update.bat`; EXE installations use the versioned update
 EXE. See [UPDATING.md](UPDATING.md).
 
-### Install COLMAP (needed for Align / Point Cloud / Mesh)
+### Install COLMAP when running from source
 
 The app finds COLMAP automatically in this order: *Tools → Preferences →
 Advanced* path, `PATH`, then a bundled copy in `tools\colmap` next to (or one

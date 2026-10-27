@@ -4,7 +4,7 @@
 
 ### Installed with the EXE
 
-1. On a new Windows computer, run `PhotoMeshStudio_Setup_<version>.exe`.
+1. Download the files from the [latest release](https://github.com/behdad-nayyerpour/photomesh-studio-improved/releases/latest). On a new Windows computer, run `PhotoMeshStudio_Setup_<version>.exe`.
    It contains Python, the app, COLMAP, and GLOMAP. No ZIP extraction, Git, or
    system Python installation is needed.
 2. To update, close PhotoMesh Studio and run
@@ -40,7 +40,7 @@ for developers; installed EXE copies should use the versioned update EXE.
 
 ### نصب با فایل EXE
 
-۱. روی رایانهٔ جدید، فایل `PhotoMeshStudio_Setup_<version>.exe` را اجرا کنید.
+۱. فایل‌ها را از [آخرین نسخه](https://github.com/behdad-nayyerpour/photomesh-studio-improved/releases/latest) دریافت کنید. روی رایانهٔ جدید، فایل `PhotoMeshStudio_Setup_<version>.exe` را اجرا کنید.
    این یک فایل شامل پایتون، برنامه، COLMAP و GLOMAP است. باز کردن ZIP، نصب
    جداگانهٔ Git یا نصب پایتون لازم نیست.
 ۲. برای به‌روزرسانی، برنامه را ببندید و فایل
