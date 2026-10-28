@@ -22,7 +22,7 @@ MENUS = [
         "New", "Open...", "Append...", "-",
         "Save", "Save As...", "-",
         ("Export", [
-            "Export Point Cloud...", "Export Model...", "Export Tiled Model...",
+            "Export Point Cloud...", "Export Model...", "Export Mesh Contours...", "Export Tiled Model...",
             "Export Orthomosaic...", "Export DEM...", "-",
             "Generate Report...", "-",
             "Export Cameras...", "Export Markers...", "Export Reference",

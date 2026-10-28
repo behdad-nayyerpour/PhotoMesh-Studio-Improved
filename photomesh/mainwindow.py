@@ -268,6 +268,7 @@ class MainWindow(ReferenceMixin, MarkerEditMixin, ShapesMixin, QMainWindow):
             "Save": self.save_project, "Save As...": self.save_project_as, "Exit": self.close,
             "Export Point Cloud...": lambda: self.export_ply("cloud"),
             "Export Model...": self.export_model,
+            "Export Mesh Contours...": self.export_contours,
             "Export Tiled Model...": self.export_tiled_model,
             "Build Tiled Model...": self.build_tiled_model,
             "Tiled Model - Textured": lambda: self.show_tiled_mode("textured"),
@@ -2043,7 +2044,7 @@ class MainWindow(ReferenceMixin, MarkerEditMixin, ShapesMixin, QMainWindow):
         self._solo("tiled")
 
     def export_model(self):
-        """Export mesh geometry, textured models, or elevation contour polylines."""
+        """Export mesh geometry or textured models."""
         ch = self.chunk
         src = ch.model_ply
         if not src or not os.path.exists(src):
@@ -2051,12 +2052,11 @@ class MainWindow(ReferenceMixin, MarkerEditMixin, ShapesMixin, QMainWindow):
         t = ch.texture or {}
         textured = bool(t.get("dir") and t.get("faces") == ch.face_count)
         filt = ("Wavefront OBJ with texture (*.obj);;Binary glTF with texture (*.glb);;"
-                "Stanford PLY with texture (*.ply);;" if textured else "") + "Stanford PLY (*.ply);;AutoCAD DXF (*.dxf);;Mesh contours DXF (*.dxf)"
+                "Stanford PLY with texture (*.ply);;" if textured else "") + "Stanford PLY (*.ply);;AutoCAD DXF (*.dxf)"
         base = os.path.splitext(os.path.basename(src))[0]
         dst, f = QFileDialog.getSaveFileName(self, "Export Model", base, filt)
         if dst:
-            self.export_model_to(dst, "contours" if "Mesh contours" in f else "dxf" if "DXF" in f else
-                                 "obj" if "OBJ" in f else "glb" if "glTF" in f else
+            self.export_model_to(dst, "dxf" if "DXF" in f else "obj" if "OBJ" in f else "glb" if "glTF" in f else
                                  "ply_tex" if "PLY with" in f else "ply")
 
     def export_model_to(self, dst, kind, contour_interval=None):
@@ -2096,6 +2096,19 @@ class MainWindow(ReferenceMixin, MarkerEditMixin, ShapesMixin, QMainWindow):
         self.log(f"Exported {dst} ({time.perf_counter() - t0:.1f} s)"
                  + (f", world coordinates (offset {', '.join(f'{v:.1f}' for v in off)})" if off is not None else ""))
         return dst
+
+    def export_contours(self):
+        """Independent File > Export command, next to Export Model."""
+        src = self.chunk.model_ply
+        if not src or not os.path.exists(src):
+            QMessageBox.information(self, "Export Mesh Contours", "Build a model first.")
+            return None
+        base = os.path.splitext(os.path.basename(src))[0] + "_contours.dxf"
+        dst, _filter = QFileDialog.getSaveFileName(
+            self, "Export Mesh Contours", base, "AutoCAD DXF (*.dxf)")
+        if dst:
+            return self.export_contours_to(dst)
+        return None
 
     def export_contours_to(self, dst, interval=None):
         """Ask for the interval and export current mesh sections off the GUI thread."""

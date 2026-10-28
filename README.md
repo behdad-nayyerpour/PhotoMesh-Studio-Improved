@@ -44,8 +44,9 @@ Setup file for every version. See [UPDATING.md](UPDATING.md).
 
 ### Export mesh contours to DXF
 
-After building a model, choose **File > Export > Export Model...** and select
-**Mesh contours DXF (*.dxf)**. Enter the contour interval when prompted.
+After building a model, choose **File > Export > Export Mesh Contours...**,
+next to Export Model. Select a DXF destination and enter the contour interval
+when prompted.
 The export intersects the mesh triangles with horizontal planes at integer
 multiples of the interval in world Z, then joins the sections into 3D
 polylines on layers `minor` and `major`. Every fifth elevation interval is
@@ -321,8 +322,8 @@ through the GUI in Fast and Exhaustive modes.
 برای اجرای کد منبع به‌جای فایل نصبی، دستورهای بخش انگلیسی را اجرا کنید.
 ساخت ابر نقاط متراکم به کارت NVIDIA و نسخهٔ سازگار CUDA نیاز دارد.
 
-**خروجی منحنی میزان:** پس از ساخت مش، در File > Export > Export Model گزینهٔ
-**Mesh contours DXF (*.dxf)** را انتخاب کنید و فاصلهٔ ارتفاعی منحنی‌ها را وارد
+**خروجی منحنی میزان:** پس از ساخت مش، از File > Export فرمان مستقل
+**Export Mesh Contours...** را کنار Export Model انتخاب کنید و فاصلهٔ ارتفاعی منحنی‌ها را وارد
 کنید. خروجی شامل پلی‌لاین‌های سه‌بعدی با ارتفاع واقعی است.
 چهار تراز میانی در لایهٔ `minor` و هر پنجمین فاصلهٔ ارتفاعی در لایهٔ `major`
 قرار می‌گیرد؛ ترازهای ماژور مضرب ۵ برابر Interval نسبت به ارتفاع صفر هستند. فاصله در واحد
