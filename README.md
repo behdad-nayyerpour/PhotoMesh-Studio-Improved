@@ -48,8 +48,11 @@ After building a model, choose **File > Export > Export Model...** and select
 **Mesh contours DXF (*.dxf)**. Enter the contour interval when prompted.
 The export intersects the mesh triangles with horizontal planes at integer
 multiples of the interval in world Z, then joins the sections into 3D
-polylines on layer `PhotoMesh_Contours`. Every vertex retains its contour
-elevation; open lines and closed loops are preserved. The existing mesh DXF
+polylines on layers `minor` and `major`. Every fifth elevation interval is
+`major` (world elevations that are multiples of 5 times the interval); the
+four intermediate levels are `minor`. The index is anchored at world Z = 0,
+including negative elevations. Both CAD layers are defined in every DXF.
+Every vertex retains its contour elevation; open lines and closed loops are preserved. The existing mesh DXF
 option remains separate.
 
 The interval uses the current model/world coordinate units. Georeference and
@@ -320,7 +323,9 @@ through the GUI in Fast and Exhaustive modes.
 
 **خروجی منحنی میزان:** پس از ساخت مش، در File > Export > Export Model گزینهٔ
 **Mesh contours DXF (*.dxf)** را انتخاب کنید و فاصلهٔ ارتفاعی منحنی‌ها را وارد
-کنید. خروجی شامل پلی‌لاین‌های سه‌بعدی با ارتفاع واقعی است. فاصله در واحد
+کنید. خروجی شامل پلی‌لاین‌های سه‌بعدی با ارتفاع واقعی است.
+چهار تراز میانی در لایهٔ `minor` و هر پنجمین فاصلهٔ ارتفاعی در لایهٔ `major`
+قرار می‌گیرد؛ ترازهای ماژور مضرب ۵ برابر Interval نسبت به ارتفاع صفر هستند. فاصله در واحد
 مختصات فعلی مدل است؛ برای کار نقشه‌برداری، ابتدا مدل را مقیاس‌گذاری و زمین‌مرجع
 کنید و محور Z را قائم قرار دهید. منحنی‌ها از خود مش استخراج می‌شوند، بنابراین
 درخت‌ها و ساختمان‌های موجود در مش نیز در آن‌ها اثر دارند. ساخت این DXF به نصب

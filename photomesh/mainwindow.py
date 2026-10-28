@@ -2106,7 +2106,7 @@ class MainWindow(ReferenceMixin, MarkerEditMixin, ShapesMixin, QMainWindow):
             return None
         if interval is None:
             label = ("Contour interval (world/model coordinate units):\n"
-                     "Uses the current model Z as elevation, at multiples of the interval.\n"
+                     "Uses model Z: major every 5 intervals; the 4 between are minor.\n"
                      "Georeference and scale the model first for surveying units.")
             interval, ok = QInputDialog.getDouble(
                 self, "Export Mesh Contours", label, 1.0, 0.000001, 1e9, 6)
@@ -2132,6 +2132,7 @@ class MainWindow(ReferenceMixin, MarkerEditMixin, ShapesMixin, QMainWindow):
             return None
         self.log(f"Exported {dst}: {result['polylines']:,} 3D contour polylines, "
                  f"{result['levels']:,} elevations, interval {result['interval']:.6g} "
+                 f"(minor {result['minor']:,}, major {result['major']:,}) "
                  f"({time.perf_counter() - t0:.1f} s)")
         if result["junctions"]:
             self.log(f"Contours split at {result['junctions']:,} mesh section junctions.")

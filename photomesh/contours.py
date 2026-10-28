@@ -1,6 +1,8 @@
 """Horizontal mesh sections exported as elevation-bearing DXF 3D polylines.
 
-Levels are integer multiples of the requested interval in WORLD Z. No
+Levels are integer multiples of the requested interval in WORLD Z. Multiples
+of five intervals use layer major; four intermediate levels use layer minor.
+Both CAD layers are explicitly defined. No
 rasterization, smoothing or re-triangulation is performed. Shared edges are
 intersected in the same lower-to-higher Z direction, so common endpoints
 match exactly without a spatial tolerance that could merge nearby contours.
@@ -18,13 +20,15 @@ import os
 
 import numpy as np
 
-from .export import atomic_write, _dxf_head, _DXF_TAIL, _rows
+from .export import atomic_write, _DXF_TAIL, _rows
 
 MAX_LEVELS = 10_000
 MAX_LEVEL_SEGMENTS = 2_000_000
 MAX_TOTAL_SEGMENTS = 20_000_000
 _BATCH = 100_000
-_LAYER = "PhotoMesh_Contours"
+MINOR_LAYER = "minor"
+MAJOR_LAYER = "major"
+INDEX_EVERY = 5
 
 
 class ContourCancelled(Exception):
@@ -169,6 +173,18 @@ def _stitch(batches, cancelled):
     return paths, len(edges), sum(len(n) > 2 for n in adjacent)
 
 
+def _contour_dxf_header():
+    """Declare real CAD layers, including an empty major layer for short ranges."""
+    text = ("0\nSECTION\n2\nHEADER\n9\n$ACADVER\n1\nAC1009\n0\nENDSEC\n"
+            "0\nSECTION\n2\nTABLES\n"
+            "0\nTABLE\n2\nLTYPE\n70\n1\n"
+            "0\nLTYPE\n2\nCONTINUOUS\n70\n0\n3\nSolid line\n72\n65\n73\n0\n40\n0\n"
+            "0\nENDTAB\n0\nTABLE\n2\nLAYER\n70\n3\n")
+    for name, colour in (("0", 7), (MINOR_LAYER, 8), (MAJOR_LAYER, 7)):
+        text += f"0\nLAYER\n2\n{name}\n70\n0\n62\n{colour}\n6\nCONTINUOUS\n"
+    return text + "0\nENDTAB\n0\nENDSEC\n0\nSECTION\n2\nENTITIES\n"
+
+
 def write_mesh_contours(dst, vertices, faces, interval, offset=None, report=None, cancelled=None):
     """Write a DXF atomically; return counts. Cancellation preserves any old dst."""
     _check_cancel(cancelled)
@@ -176,15 +192,20 @@ def write_mesh_contours(dst, vertices, faces, interval, offset=None, report=None
         report(0, 1, "Preparing mesh contours...")
     V, F, off, z, starts, lows, ends, highs, first, count, step = _prepare(
         vertices, faces, interval, offset, cancelled)
-    stats = dict(polylines=0, levels=0, vertices=0, segments=0, junctions=0, interval=step)
+    stats = dict(polylines=0, levels=0, vertices=0, segments=0, junctions=0, interval=step,
+                 minor=0, major=0)
     active, si, ei = set(), 0, 0
-    vfmt = "0\nVERTEX\n8\n" + _LAYER + "\n10\n%.17g\n20\n%.17g\n30\n%.17g\n70\n32\n"
     with atomic_write(dst, "w", encoding="ascii", newline="\n") as out:
-        out.write(_dxf_head(_LAYER))
-        out.write(f"999\nPhotoMesh mesh contours; interval={step:.17g}; world Z; no smoothing\n")
+        out.write(_contour_dxf_header())
+        out.write(f"999\nPhotoMesh mesh contours; interval={step:.17g}; world Z; major every {INDEX_EVERY} intervals; no smoothing\n")
         for i in range(count):
             _check_cancel(cancelled)
-            level = (first + i) * step
+            index = first + i
+            level = index * step
+            # Index from world zero, not from the first contour that happens to
+            # cross this mesh. Integer modulo is stable at fractional intervals.
+            layer = MAJOR_LAYER if index % INDEX_EVERY == 0 else MINOR_LAYER
+            vfmt = "0\nVERTEX\n8\n" + layer + "\n10\n%.17g\n20\n%.17g\n30\n%.17g\n70\n32\n"
             ns = int(np.searchsorted(lows, level, side="left"))  # low < level
             ne = int(np.searchsorted(highs, level, side="left")) # high < level expires
             active.update(starts[si:ns].tolist())
@@ -203,7 +224,7 @@ def write_mesh_contours(dst, vertices, faces, interval, offset=None, report=None
                 stats["levels"] += 1
             for xy, closed in paths:
                 _check_cancel(cancelled)
-                out.write(f"0\nPOLYLINE\n8\n{_LAYER}\n66\n1\n10\n0\n20\n0\n30\n0\n70\n{9 if closed else 8}\n")
+                out.write(f"0\nPOLYLINE\n8\n{layer}\n66\n1\n10\n0\n20\n0\n30\n0\n70\n{9 if closed else 8}\n")
                 for start in range(0, len(xy), 10_000):
                     _check_cancel(cancelled)
                     block = xy[start:start + 10_000]
@@ -211,8 +232,9 @@ def write_mesh_contours(dst, vertices, faces, interval, offset=None, report=None
                     xyz[:, :2] = block + off[:2]
                     xyz[:, 2] = level
                     _rows(out, vfmt, xyz)
-                out.write(f"0\nSEQEND\n8\n{_LAYER}\n")
+                out.write(f"0\nSEQEND\n8\n{layer}\n")
                 stats["polylines"] += 1
+                stats[layer] += 1
                 stats["vertices"] += len(xy)
             if report:
                 report(i + 1, count, f"Elevation {level:.6g}; {stats['polylines']:,} polylines")

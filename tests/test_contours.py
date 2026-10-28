@@ -23,13 +23,15 @@ def pyramid():
 
 def read_contours(path):
     doc = ezdxf.readfile(path)
+    assert "minor" in doc.layers and "major" in doc.layers
     assert not doc.audit().has_errors
     entities = list(doc.modelspace())
     assert entities and all(e.dxftype() == "POLYLINE" for e in entities)
     result = []
     for e in entities:
         assert e.dxf.flags & 8 and not e.dxf.flags & 64
-        assert e.dxf.layer == "PhotoMesh_Contours"
+        assert e.dxf.layer in ("minor", "major")
+        assert all(v.dxf.layer == e.dxf.layer for v in e.vertices)
         assert all(v.dxf.flags & 32 for v in e.vertices)
         xyz = np.array([tuple(v.dxf.location) for v in e.vertices])
         assert len(xyz) >= 2 and np.ptp(xyz[:, 2]) == 0
@@ -44,6 +46,7 @@ def test_plane_is_stitched_across_diagonal_and_not_a_mesh(tmp_path):
     stats = C.write_mesh_contours(out, V, F, 1)
     paths = read_contours(out)
     assert stats["polylines"] == stats["levels"] == len(paths) == 4
+    assert stats["minor"] == 4 and stats["major"] == 0
     for xyz, closed in paths:
         assert not closed
         z = xyz[0, 2]
@@ -236,3 +239,33 @@ def test_batch_boundaries_reversed_faces_and_duplicate_segments(tmp_path, monkey
 def test_interval_below_world_coordinate_precision_is_rejected(tmp_path):
     with pytest.raises(ValueError, match="precision"):
         C.write_mesh_contours(tmp_path / "precision.dxf", *plane(), 1, offset=[0, 0, 1e16])
+
+
+def test_four_minor_then_one_major_in_separate_cad_layers(tmp_path):
+    V, F = plane()
+    V[:, 2] *= 3
+    out = tmp_path / "indexed.dxf"
+    stats = C.write_mesh_contours(out, V, F, 1)
+    read_contours(out)
+    polylines = list(ezdxf.readfile(out).modelspace().query("POLYLINE"))
+    assert [p.dxf.layer for p in polylines] == [
+        "minor", "minor", "minor", "minor", "major",
+        "minor", "minor", "minor", "minor", "major", "minor", "minor"]
+    assert stats["major"] == 2 and stats["minor"] == 10
+    for p in polylines:
+        assert all(v.dxf.layer == p.dxf.layer for v in p.vertices)
+
+
+@pytest.mark.parametrize("interval,zoffset", [(0.2, 0.13), (1.0, -6.0)])
+def test_major_levels_are_world_multiples_not_relative_to_mesh_start(tmp_path, interval, zoffset):
+    V, F = plane()
+    V[:, 2] *= 3
+    out = tmp_path / "world_indexed.dxf"
+    stats = C.write_mesh_contours(out, V, F, interval, offset=[10, 20, zoffset])
+    paths = read_contours(out)
+    assert stats["major"] >= 2 and len(paths) == stats["polylines"]
+    for p in ezdxf.readfile(out).modelspace().query("POLYLINE"):
+        z = p.vertices[0].dxf.location.z
+        index = round(z / interval)
+        assert z == pytest.approx(index * interval)
+        assert p.dxf.layer == ("major" if index % 5 == 0 else "minor")
