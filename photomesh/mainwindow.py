@@ -2043,7 +2043,7 @@ class MainWindow(ReferenceMixin, MarkerEditMixin, ShapesMixin, QMainWindow):
         self._solo("tiled")
 
     def export_model(self):
-        """Export Model: OBJ (+MTL + texture pages), binary glTF, or PLY."""
+        """Export mesh geometry, textured models, or elevation contour polylines."""
         ch = self.chunk
         src = ch.model_ply
         if not src or not os.path.exists(src):
@@ -2051,16 +2051,19 @@ class MainWindow(ReferenceMixin, MarkerEditMixin, ShapesMixin, QMainWindow):
         t = ch.texture or {}
         textured = bool(t.get("dir") and t.get("faces") == ch.face_count)
         filt = ("Wavefront OBJ with texture (*.obj);;Binary glTF with texture (*.glb);;"
-                "Stanford PLY with texture (*.ply);;" if textured else "") + "Stanford PLY (*.ply);;AutoCAD DXF (*.dxf)"
+                "Stanford PLY with texture (*.ply);;" if textured else "") + "Stanford PLY (*.ply);;AutoCAD DXF (*.dxf);;Mesh contours DXF (*.dxf)"
         base = os.path.splitext(os.path.basename(src))[0]
         dst, f = QFileDialog.getSaveFileName(self, "Export Model", base, filt)
         if dst:
-            self.export_model_to(dst, "dxf" if "DXF" in f else "obj" if "OBJ" in f else "glb" if "glTF" in f else
+            self.export_model_to(dst, "contours" if "Mesh contours" in f else "dxf" if "DXF" in f else
+                                 "obj" if "OBJ" in f else "glb" if "glTF" in f else
                                  "ply_tex" if "PLY with" in f else "ply")
 
-    def export_model_to(self, dst, kind):
+    def export_model_to(self, dst, kind, contour_interval=None):
         """World coordinates (local + georef offset) for PLY / OBJ / DXF; GLB keeps
         float32 local vertices with the offset in the root node translation."""
+        if kind == "contours":
+            return self.export_contours_to(dst, contour_interval)
         from . import export as ex
         ch = self.chunk
         t = ch.texture or {}
@@ -2092,6 +2095,46 @@ class MainWindow(ReferenceMixin, MarkerEditMixin, ShapesMixin, QMainWindow):
             self._run_export("Export Model", lambda: export_glb(src, t["dir"], dst, z_up=True, offset=off))
         self.log(f"Exported {dst} ({time.perf_counter() - t0:.1f} s)"
                  + (f", world coordinates (offset {', '.join(f'{v:.1f}' for v in off)})" if off is not None else ""))
+        return dst
+
+    def export_contours_to(self, dst, interval=None):
+        """Ask for the interval and export current mesh sections off the GUI thread."""
+        from .contours import export_mesh_contours, ContourCancelled
+        src = self.chunk.model_ply
+        if not src or not os.path.exists(src):
+            QMessageBox.information(self, "Export Mesh Contours", "Build a model first.")
+            return None
+        if interval is None:
+            label = ("Contour interval (world/model coordinate units):\n"
+                     "Uses the current model Z as elevation, at multiples of the interval.\n"
+                     "Georeference and scale the model first for surveying units.")
+            interval, ok = QInputDialog.getDouble(
+                self, "Export Mesh Contours", label, 1.0, 0.000001, 1e9, 6)
+            if not ok:
+                return None
+        if not dst.lower().endswith(".dxf"):
+            dst += ".dxf"
+        offset = self._world_offset()
+
+        def work(report, cancelled):
+            try:
+                return export_mesh_contours(src, dst, interval, offset, report, cancelled)
+            except ContourCancelled:
+                return None
+
+        t0 = time.perf_counter()
+        result, _cancelled, err = run_modal(
+            self, "Export Mesh Contours", "Generating contour polylines...", work, 0)
+        if err is not None:
+            raise RuntimeError(str(err))
+        if result is None:
+            self.log("Contour export cancelled.")
+            return None
+        self.log(f"Exported {dst}: {result['polylines']:,} 3D contour polylines, "
+                 f"{result['levels']:,} elevations, interval {result['interval']:.6g} "
+                 f"({time.perf_counter() - t0:.1f} s)")
+        if result["junctions"]:
+            self.log(f"Contours split at {result['junctions']:,} mesh section junctions.")
         return dst
 
     def export_tiled_model(self):

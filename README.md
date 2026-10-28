@@ -17,7 +17,7 @@ inspected or copied. PhotoMesh Studio is not affiliated with Agisoft.
 
 ## Install on Windows
 
-Download the [latest release](https://github.com/behdad-nayyerpour/photomesh-studio-improved/releases/latest), then run **PhotoMeshStudio_Setup_0.1.15.exe**. It is a
+Download the [latest release](https://github.com/behdad-nayyerpour/photomesh-studio-improved/releases/latest), then run **PhotoMeshStudio_Setup_0.1.16.exe**. It is a
 single offline installer containing Python, the required packages, COLMAP, and
 GLOMAP. It creates a Start menu shortcut and can optionally create a desktop
 shortcut. Python and Git do not need to be installed separately.
@@ -41,6 +41,25 @@ cd photomesh-studio-improved
 The private repository may ask you to sign in to GitHub during cloning. Source
 installations can use the legacy Git scripts; EXE installations use the full
 Setup file for every version. See [UPDATING.md](UPDATING.md).
+
+### Export mesh contours to DXF
+
+After building a model, choose **File > Export > Export Model...** and select
+**Mesh contours DXF (*.dxf)**. Enter the contour interval when prompted.
+The export intersects the mesh triangles with horizontal planes at integer
+multiples of the interval in world Z, then joins the sections into 3D
+polylines on layer `PhotoMesh_Contours`. Every vertex retains its contour
+elevation; open lines and closed loops are preserved. The existing mesh DXF
+option remains separate.
+
+The interval uses the current model/world coordinate units. Georeference and
+scale the model first for surveying units, and make sure model Z is vertical.
+This is a section of the actual mesh, so roofs, vegetation and other mesh
+features are included; it is not a classified bare-earth surface. No smoothing
+or raster resampling is applied. Export runs in a cancellable background task
+and replaces the destination only when complete. Extremely small intervals
+are rejected if they would produce excessive output. AutoCAD and Civil 3D
+are not required to generate the DXF.
 
 ### Install COLMAP when running from source
 
@@ -289,7 +308,7 @@ through the GUI in Fast and Exhaustive modes.
 منوها و روند کارش شبیه نرم‌افزارهای حرفه‌ای فتوگرامتری است (بر اساس مستندات عمومی).
 همه‌ی کدها، ظاهر و آیکون‌ها از خودمان است.
 
-**نصب روی ویندوز:** فایل `PhotoMeshStudio_Setup_0.1.15.exe` را اجرا کنید.
+**نصب روی ویندوز:** فایل `PhotoMeshStudio_Setup_0.1.16.exe` را اجرا کنید.
 این یک فایل نصبی آفلاین است و پایتون، COLMAP و GLOMAP را همراه دارد.
 برای هر نسخهٔ بعدی، برنامه را ببندید و فایل
 `PhotoMeshStudio_Setup_<version>.exe` همان نسخه را روی نصب قبلی اجرا کنید.
@@ -298,6 +317,14 @@ through the GUI in Fast and Exhaustive modes.
 
 برای اجرای کد منبع به‌جای فایل نصبی، دستورهای بخش انگلیسی را اجرا کنید.
 ساخت ابر نقاط متراکم به کارت NVIDIA و نسخهٔ سازگار CUDA نیاز دارد.
+
+**خروجی منحنی میزان:** پس از ساخت مش، در File > Export > Export Model گزینهٔ
+**Mesh contours DXF (*.dxf)** را انتخاب کنید و فاصلهٔ ارتفاعی منحنی‌ها را وارد
+کنید. خروجی شامل پلی‌لاین‌های سه‌بعدی با ارتفاع واقعی است. فاصله در واحد
+مختصات فعلی مدل است؛ برای کار نقشه‌برداری، ابتدا مدل را مقیاس‌گذاری و زمین‌مرجع
+کنید و محور Z را قائم قرار دهید. منحنی‌ها از خود مش استخراج می‌شوند، بنابراین
+درخت‌ها و ساختمان‌های موجود در مش نیز در آن‌ها اثر دارند. ساخت این DXF به نصب
+AutoCAD یا Civil 3D نیاز ندارد.
 
 **روند کار:** Workflow → Add Photos ← Align Photos ← Build Point Cloud ← Build Model.
 حالت پیش‌فرض همترازسازی **Fast** است (انتخاب هوشمند جفت عکس‌ها با GPS و شباهت تصویر،

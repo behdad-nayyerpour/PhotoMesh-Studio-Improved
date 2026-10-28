@@ -4,6 +4,12 @@
 
 ## English
 
+### 0.1.16 (2026-10-29)
+
+- Added Mesh contours DXF to Export Model. The user chooses a positive contour interval, and horizontal mesh sections are exported as elevation-bearing 3D polylines.
+- Contours use world coordinates, preserve closed loops and separate components, and split at ambiguous mesh section junctions. Export runs off the UI thread and cancellation preserves the previous destination.
+- Added analytic geometry, cancellation, GUI and independent DXF-reader tests. The application needs no additional runtime packages or AutoCAD/Civil 3D installation.
+
 ### 0.1.15 (2026-10-27)
 
 - Fixed File > New leaving the previous photo visible after the workspace becomes empty.
@@ -186,6 +192,12 @@ Needs **no new Python packages** (same 74 pinned wheels as 0.1.2). An existing p
 <div dir="rtl">
 
 ## فارسی
+
+### 0.1.16 (2026-10-29)
+
+- خروجی Mesh contours DXF به Export Model اضافه شد؛ پیش از ساخت خروجی، فاصلهٔ ارتفاعی منحنی‌ها پرسیده می‌شود و منحنی‌های مش به‌صورت پلی‌لاین سه‌بعدی دارای ارتفاع ذخیره می‌شوند.
+- مختصات واقعی، حلقه‌های بسته و بخش‌های جدا حفظ می‌شوند. خروجی در پس‌زمینه ساخته می‌شود و لغو آن فایل مقصد قبلی را حفظ می‌کند.
+- آزمون هندسی، لغو خروجی، رابط کاربری و خواندن DXF با کتابخانهٔ مستقل اضافه شد. اجرای برنامه به وابستگی جدید یا نصب AutoCAD/Civil 3D نیاز ندارد.
 
 ### 0.1.15 (2026-10-27)
 
