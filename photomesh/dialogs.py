@@ -400,9 +400,8 @@ class ProgressDialog(QDialog):
         self.stage_bar = QProgressBar(); self.stage_bar.setRange(0, 0)
         self.timing = QLabel("Estimating remaining time..."); self.timing.setWordWrap(True)
         self._timer = QTimer(self); self._timer.setInterval(1000)
-        self._timer.timeout.connect(lambda: self.timing.setText(self._stage_text + "\n" + self._meter.text()))
-        self._timer.start()
-        self.finished.connect(lambda *_: self._timer.stop())
+        self._timer.timeout.connect(self._refresh_timing)
+        self.finished.connect(self._timer.stop)
         self.log = QPlainTextEdit(); self.log.setReadOnly(True)
         self.log.setMaximumBlockCount(2000)
         self.cancel_btn = QPushButton("Cancel")
@@ -416,6 +415,18 @@ class ProgressDialog(QDialog):
         lay.addLayout(row)
         self.running = True
         self._label, self._detail, self._pct = "", "", 0.0
+
+    def _refresh_timing(self):
+        self.timing.setText(self._stage_text + "\n" + self._meter.text())
+
+    def showEvent(self, event):
+        super().showEvent(event)
+        if self.running:
+            self._timer.start()
+
+    def hideEvent(self, event):
+        self._timer.stop()
+        super().hideEvent(event)
 
     def reject(self):
         if self.running:

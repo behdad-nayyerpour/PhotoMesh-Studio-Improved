@@ -68,8 +68,8 @@ class PatchMatchMeter(_Meter):
         self.count += 1
         if self.views is None:
             self.views = int(m.group(2))
-        # the view being processed now counts as half done
-        frac = min(1.0, (self.count - 0.5) / self.total)
+        # Only previous views are known complete; a just-started view is not half finished.
+        frac = min(1.0, (self.count - 1) / self.total)
         if self.count <= self.todo_p:
             what = f"photometric pass {self.count}/{self.todo_p}"
         else:
@@ -99,7 +99,7 @@ class FusionMeter(_Meter):
         txt = f"Fusion: image {k}/{n}"
         if self.points:
             txt += f", {self.points / 1e6:.1f} M points"
-        return min(1.0, (k - 0.5) / max(1, n)), txt + (f" - about {fmt_eta(eta)} left" if eta else "")
+        return min(1.0, (k - 1) / max(1, n)), txt + (f" - about {fmt_eta(eta)} left" if eta else "")
 
 
 class WorkProgress:

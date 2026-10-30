@@ -229,7 +229,7 @@ def test_patch_match_meter_two_passes_and_eta():
         out.append(m.feed(f"Processing view {i % 4 + 1} / 4 for img{i % 4}.jpg"))
     assert m.feed("Reading inputs...") is None
     fr = [o[0] for o in out]
-    assert fr == sorted(fr) and fr[0] > 0 and fr[-1] < 1
+    assert fr == sorted(fr) and fr[0] == 0 and fr[-1] < 1
     assert "photometric pass 1/4" in out[0][1] and "geometric pass 1/4" in out[4][1]
     assert "about 40 s left" in out[4][1]                        # 10 s per view, 4 to go
     assert fmt_eta(3725) == "1 h 02 min" and fmt_eta(59) == "59 s"
@@ -239,7 +239,7 @@ def test_fusion_meter():
     m = FusionMeter(clock=Clock())
     assert m.feed("Reading workspace...")[1].startswith("Fusion: loading")
     f, t = m.feed("Fusing image [2/10] with index 3")
-    assert abs(f - 0.15) < 1e-9 and "image 2/10" in t
+    assert abs(f - 0.1) < 1e-9 and "image 2/10" in t
     m.feed(" in 0.046s (28637607 points)")
     assert "28.6 M points" in m.feed("Fusing image [3/10] with index 4")[1]
 

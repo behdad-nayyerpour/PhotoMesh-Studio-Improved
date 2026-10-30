@@ -7,19 +7,20 @@ from __future__ import annotations
 
 from contextlib import contextmanager
 
-from PySide6.QtCore import Qt, QTimer
+from PySide6.QtCore import Qt, QTimer, QObject
 from .progress import WorkProgress
 from PySide6.QtWidgets import QApplication, QLabel, QProgressBar
 
 
-class BusyIndicator:
+class BusyIndicator(QObject):
     def __init__(self, statusbar=None):
+        super().__init__(statusbar)
         self.titles = []
         self.tasks = {}
         self.label = QLabel(); self.label.hide()
         self.bar = QProgressBar(); self.bar.setRange(0, 0); self.bar.setTextVisible(False)
         self.bar.setFixedSize(64, 12); self.bar.hide()
-        self.timer = QTimer(self.label)
+        self.timer = QTimer(self)
         self.timer.setInterval(1000)
         self.timer.timeout.connect(self._show)
         self.label.setMaximumWidth(650)
