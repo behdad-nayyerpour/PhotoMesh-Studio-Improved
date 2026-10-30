@@ -14,7 +14,7 @@ import subprocess
 import sys
 
 import numpy as np
-from PySide6.QtCore import QObject, QProcess, Signal, QSettings, Qt
+from PySide6.QtCore import QObject, QProcess, Signal, QSettings, Qt, Slot
 
 _HELP_CACHE: dict = {}
 
@@ -526,21 +526,7 @@ class PipelineRunner(QObject):
             from .bgjob import BackgroundJob
             job = BackgroundJob(lambda report, cancelled: args() or [], name=label, parent=self)
             self._callback_job = job
-            def complete(extra, error):
-                # The sender is a child of this runner. Join its completed worker
-                # before a finished receiver can destroy the runner/child during emit.
-                job.wait()
-                self._callback_job = None
-                if self.cancelled:
-                    self.finished.emit(False, "Cancelled by user")
-                elif error:
-                    self._fail(f"'{label}' failed: {error}", exc=job.exception)
-                else:
-                    self.steps[self.idx + 1:self.idx + 1] = extra or []
-                    self.total += sum(w for _, _, w in (extra or []))
-                    self._next()
-                job.deleteLater()
-            job.done.connect(complete, Qt.QueuedConnection)
+            job.done.connect(self._callable_done, Qt.QueuedConnection)
             job.start()
             return
         try:
@@ -565,6 +551,25 @@ class PipelineRunner(QObject):
         self.proc.finished.connect(self._done)
         self.proc.errorOccurred.connect(self._error)
         self.proc.start(prog, pargs)
+
+    @Slot(object, object)
+    def _callable_done(self, extra, error):
+        job = self._callback_job
+        if job is None:
+            return
+        job.wait()
+        self._callback_job = None
+        exception = job.exception
+        job.deleteLater()
+        if self.cancelled:
+            self.finished.emit(False, "Cancelled by user")
+        elif error:
+            label = self.steps[self.idx][0]
+            self._fail(f"'{label}' failed: {error}", exc=exception)
+        else:
+            self.steps[self.idx + 1:self.idx + 1] = extra or []
+            self.total += sum(w for _, _, w in (extra or []))
+            self._next()
 
     def _read(self):
         text = bytes(self.proc.readAllStandardOutput()).decode("utf-8", "ignore")
