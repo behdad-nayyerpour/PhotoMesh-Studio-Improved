@@ -101,6 +101,7 @@ def test_overlay_draws_labels_over_geometry_and_marks_occluded(qapp):
     from PySide6.QtGui import QImage, QPainter, QColor
     from photomesh.overlay3d import Overlay
     ov = Overlay(); ov.legend = False
+    ov.marker_states = {"GCP1": "pinned", "GCP2": "placed"}
     ov.markers = (np.array([[0.0, 0.0, 0.0], [50.0, 20.0, 0.0]]), ["GCP1", "GCP2"], np.array([True, False]))
     img = QImage(200, 100, QImage.Format_RGB32); img.fill(QColor(180, 120, 90))   # "textured mesh"
     depth = lambda xy: np.where(xy[:, 0] > 120, 0.0, 1.0)              # surface in front of the 2nd marker
@@ -111,18 +112,19 @@ def test_overlay_draws_labels_over_geometry_and_marks_occluded(qapp):
     for _k, _t, r in rects:                                             # label boxes painted, fully
         c = img.pixelColor(int(r.left() + 1), int(r.center().y()))
         assert c.red() < 90 and c.green() < 90, c.name()
-    assert img.pixelColor(100, 50) == QColor(255, 214, 40)             # filled control dot at its pixel
+    assert img.pixelColor(100, 50) == QColor(40, 220, 60)              # pinned marker is green
 
 
 def test_label_visibility_and_legend(qapp):
     from PySide6.QtGui import QImage, QPainter, QColor
     from photomesh.views import ModelView
     mv = ModelView()
+    mv.marker_states = {"7": "placed"}
     mv.set_markers(np.array([[0.0, 0.0, 0.0]]), labels=["7"], control=[False])
     assert mv.overlay.markers is not None and mv.overlay.show["marker_labels"]
     mv.set_visible("marker_labels", False)
     items = mv.overlay.items(_identity_view(), 200, 100)
-    assert items and items[0][2] == "" and items[0][3] == QColor(60, 220, 255)    # check point colour
+    assert items and items[0][2] == "" and items[0][3] == QColor(60, 140, 255)    # used prediction is blue, independent of Control/Check
     img = QImage(400, 200, QImage.Format_RGB32); img.fill(QColor(0, 0, 0))
     p = QPainter(img); mv.overlay.paint(p, items, 400, 200); p.end()
     assert mv.overlay.last["labels"] == 0

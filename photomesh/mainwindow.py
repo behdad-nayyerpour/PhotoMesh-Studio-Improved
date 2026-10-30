@@ -93,6 +93,8 @@ class MainWindow(ReferenceMixin, MarkerEditMixin, ShapesMixin, QMainWindow):
         self.ortho_view.markerAction.connect(lambda action, label: self.marker_view_action(action, label, "ortho"))
         self.model_view.markerAction.connect(lambda action, label: self.marker_view_action(action, label, "model"))
         self.model_view.moveMarkerRay.connect(self._move_marker_ray)
+        self.ortho_view.moveMarkerRequested.connect(
+            lambda label, X, Y, Z: self.add_marker_at_ortho(X, Y, Z, label=label, replace_pins=True))
         self.ortho_view.placeMarkerRequested.connect(
             lambda label, X, Y, Z: self.add_marker_at_ortho(X, Y, Z, label=label))
         self.ortho_view.coordinatesChanged.connect(lambda t: self.statusBar().showMessage(t) if t else
@@ -857,7 +859,7 @@ class MainWindow(ReferenceMixin, MarkerEditMixin, ShapesMixin, QMainWindow):
             self.model_view.begin_marker_move(label)
             return
         world = self.ortho_from_local(point)
-        self.add_marker_at_ortho(*world, label=label)
+        self.add_marker_at_ortho(*world, label=label, replace_pins=True)
 
     def _update_stale_banners(self):
         ch = self.chunk
@@ -2294,33 +2296,28 @@ class MainWindow(ReferenceMixin, MarkerEditMixin, ShapesMixin, QMainWindow):
         self._update_ortho_markers()
 
     def _update_ortho_markers(self):
-        """Markers in the Ortho tab (world XY): reference if georeferenced, else the
-        estimate, else the position triangulated from the photos (e.g. a marker
-        just added in the ortho view), mapped into the ortho's frame."""
-        ch = self.chunk
-        mk = []
-        off = self._world_offset()
-        tri = None
-        for m in ch.markers or []:
-            ref = m.get("ref")
-            if ref is not None and len(ref) >= 2 and ref[0] is not None and ch.georef:
-                mk.append((m["label"], float(ref[0]), float(ref[1])))
-            elif m.get("est"):
-                e = np.asarray(m["est"], float) + (off if off is not None else 0)
-                mk.append((m["label"], float(e[0]), float(e[1])))
-            elif m.get("projections"):
-                if tri is None:
-                    try:
-                        tri = {lab: x for lab, x, _e in (self._marker_positions() or [])}
-                    except Exception:  # noqa: BLE001
-                        tri = {}
-                X = tri.get(m["label"])
-                if X is not None:
-                    P = self.ortho_from_local(X)
-                    mk.append((m["label"], float(P[0]), float(P[1])))
+        """Use measured model positions; survey references remain independent."""
         from .marker_style import marker_state
+        ch = self.chunk
+        try:
+            positions = {label: X for label, X, _control in (self._marker_positions() or [])}
+        except Exception:
+            positions = {}
+        markers = []
+        offset = np.asarray((ch.georef or {}).get("offset") or [0, 0, 0], float)
+        for marker in ch.markers or []:
+            X = positions.get(marker["label"])
+            if X is not None:
+                point = self.ortho_from_local(X)
+            elif marker.get("est") is not None:
+                # georef tasks store metric world estimates: remove the offset once,
+                # then apply the raster frame once (no double-adding its offset).
+                point = self.ortho_from_local(np.asarray(marker["est"], float) - offset)
+            else:
+                continue
+            markers.append((marker["label"], float(point[0]), float(point[1])))
         self.ortho_view.marker_states = {m["label"]: marker_state(m) for m in ch.markers or []}
-        self.ortho_view.set_markers(mk)
+        self.ortho_view.set_markers(markers)
 
     def show_ortho(self, kind):
         """Model > Orthomosaic / DEM (and the Workspace rows): show the layer in the Ortho tab."""

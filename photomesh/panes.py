@@ -492,6 +492,9 @@ class MarkersPane(QTableWidget):
         self.filter_group(getattr(self, "_group", 0))
 
     def filter_group(self, group):
+        if group != getattr(self, "_group", 0):
+            self.clearSelection()
+            self.setCurrentCell(-1, -1)
         self._group = group
         for row, control in enumerate(getattr(self, "_marker_groups", [])):
             self.setRowHidden(row, (group == 1 and not control) or (group == 2 and control))

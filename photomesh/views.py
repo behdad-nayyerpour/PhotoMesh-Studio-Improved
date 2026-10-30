@@ -562,6 +562,9 @@ class ModelView(QWidget):
     def marker_at(self, x, y, tolerance=18):
         if self.overlay.markers is None or not self.overlay.show.get("markers", True):
             return None
+        for kind, label, rect in self.overlay.last.get("label_rects", []):
+            if kind == "marker" and rect.contains(QPointF(x, y)):
+                return label
         from .overlay3d import project
         mvp = self.view_mvp()
         if mvp is None or self.gl is None:

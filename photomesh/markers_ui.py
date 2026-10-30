@@ -423,7 +423,7 @@ class MarkerEditMixin:
                 self.log(f"Add Marker: cannot read {src}: {e}")
         return None, ""
 
-    def add_marker_at_ortho(self, X, Y, Z=None, label=None):
+    def add_marker_at_ortho(self, X, Y, Z=None, label=None, replace_pins=False):
         """Ortho tab > right-click > Add Marker: a new marker (GCP) at world (X, Y)
         of the orthomosaic / DEM (its geotransform), Z from the DEM / ortho height
         grid (else the surface below), projected into every photo that sees it
@@ -463,7 +463,7 @@ class MarkerEditMixin:
             ms.append(g.Marker(label=label, projections=pred))
         else:
             # Ortho placements are predictions, never overwrite manually pinned photo observations.
-            pinned = {g._stem(k): v for k, v in target.projections.items() if len(v) < 3 or v[2]}
+            pinned = {} if replace_pins else {g._stem(k): v for k, v in target.projections.items() if len(v) < 3 or v[2]}
             target.projections = dict(pred, **pinned)
             target.est = None
             target.locked = False

@@ -165,3 +165,33 @@ def test_background_status_is_counted_independently(window):
     assert busy.active and "Loading texture" in busy.label.text()
     busy.background("texture")
     assert not busy.active
+
+
+def test_moving_marker_changes_estimate_without_overwriting_reference_xyz(window, tmp_path):
+    ch = _scene(window, tmp_path)
+    ch.georef = {"offset": [1000., 2000., 0.]}
+    ch.markers = [g.Marker("G1", ref=[1110., 2100., 0.]).to_dict()]
+    assert window.add_marker_at_ortho(1110., 2100., 0., label="G1") == "G1"
+    assert _marker(window, "G1")["ref"] == [1110., 2100., 0.]
+    assert window.add_marker_at_ortho(1115., 2100., 0., label="G1") == "G1"
+    assert _marker(window, "G1")["ref"] == [1110., 2100., 0.]
+    assert window.ortho_view.markers[0][1:] == pytest.approx((1115., 2100.), abs=1e-3)
+
+
+def test_estimated_world_marker_offset_is_applied_once(window):
+    window.chunk.georef = {"offset": [1000., 2000., 0.]}
+    window.chunk.markers = [g.Marker("G1", est=[1110., 2100., 0.]).to_dict()]
+    window._update_ortho_markers()
+    assert window.ortho_view.markers == [("G1", 1110., 2100.)]
+
+
+def test_explicit_surface_move_can_replace_pins_and_is_undoable(window, tmp_path):
+    ch = _scene(window, tmp_path)
+    label = window.add_marker_at_photo(500., 400., k=0)
+    old = dict(_marker(window, label)["projections"])
+    window.ortho_view.moveMarkerRequested.emit(label, 110., 100., 0.)
+    points = _marker(window, label)["projections"]
+    assert all(not p[2] for p in points.values())
+    assert window.ortho_view.markers[0][1:] == pytest.approx((110., 100.), abs=1e-3)
+    assert window.undo_markers()
+    assert _marker(window, label)["projections"] == old

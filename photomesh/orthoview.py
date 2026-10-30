@@ -102,6 +102,7 @@ class OrthoView(QWidget):
     shapeClicked = Signal(int)                     # index into the chunk's shape set, -1 = nothing hit
     workChanged = Signal(str, int, int, bool)
     markerAction = Signal(str, str)
+    moveMarkerRequested = Signal(str, float, float, object)
     placeMarkerRequested = Signal(str, float, float, object)
     addMarkerRequested = Signal(float, float, object)   # world X, Y, Z (None = not loaded / no height)
 
@@ -626,7 +627,7 @@ class OrthoView(QWidget):
             X, Y, Z = self.coordinates_at(e.position().x(), e.position().y())
             label = self._moving_marker
             self.cancel_marker_move()
-            self.placeMarkerRequested.emit(label, X, Y, Z)
+            self.moveMarkerRequested.emit(label, X, Y, Z)
             return
         if e.button() in (Qt.LeftButton, Qt.MiddleButton):
             self._drag = (e.position(), self.center)

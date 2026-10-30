@@ -94,6 +94,11 @@ class ReferenceMixin:
     def _marker_model_xyz(self, m, model, names):
         """Marker position in the model frame: reference (if georeferenced),
         else triangulated from its projections."""
+        # Display the surveyed feature's observed estimate, not its reference target.
+        # Moving its photo/Ortho placement must not edit its survey XYZ.
+        X, _n = g.triangulate_marker(model, m.projections, names)
+        if X is not None:
+            return X
         gr = self.chunk.georef or {}
         if gr.get("offset") is not None and m.ref is not None:
             try:
