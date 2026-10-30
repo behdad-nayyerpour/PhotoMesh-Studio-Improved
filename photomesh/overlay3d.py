@@ -18,10 +18,10 @@ import numpy as np
 from PySide6.QtCore import QPointF, QRectF, Qt
 from PySide6.QtGui import QColor, QFont, QFontMetricsF, QPainter, QPen, QBrush
 
-CONTROL = QColor(255, 214, 40)        # enabled marker: used as control point
-CHECK = QColor(60, 220, 255)          # disabled marker: check point
+CONTROL = QColor(40, 220, 60)        # enabled marker: used as control point
+CHECK = QColor(60, 140, 255)          # disabled marker: check point
 CAMERA = QColor(150, 190, 255)
-LEGEND = [(CONTROL, "Control point (enabled marker)"), (CHECK, "Check point (disabled marker)")]
+LEGEND = [(CONTROL, "Pinned"), (CHECK, "Placed / used prediction"), (QColor(190, 190, 190), "Unused prediction")]
 
 
 def project(mvp, pts, width, height):
@@ -76,7 +76,7 @@ def label_rect(anchor, tw, th, width, height, pad=3.0, off=(9.0, -9.0)):
 
 def label_font(base=None):
     f = QFont(base) if base is not None else QFont()
-    f.setPointSizeF(9.0)                       # points: scaled by Qt per screen DPI, consistent size
+    f.setPointSizeF(10.0)                       # points: scaled by Qt per screen DPI, consistent size
     f.setBold(True)
     return f
 
@@ -116,6 +116,7 @@ class Overlay:
     """CPU-side description of what the overlay pass draws; filled by ModelView."""
 
     def __init__(self):
+        self.marker_states = {}
         self.markers = None        # (pts (n,3) display frame, labels, control bool (n,))
         self.cameras = None        # (pts (n,3), labels)
         self.shape_labels = []     # [(pts (n,3), labels, QColor[, style])]; style: label_size, label_bg, label_bg_color
@@ -177,7 +178,9 @@ class Overlay:
                 add("shape", pts, labels, col, False, ent[3] if len(ent) > 3 else None)
         if self.markers is not None and self.show.get("markers"):
             pts, labels, ctl = self.markers
-            cols = [CONTROL if c else CHECK for c in ctl]
+            from .marker_style import color
+            cols = [color(self.marker_states[str(lab)]) if str(lab) in self.marker_states else
+                    (CONTROL if c else CHECK) for lab, c in zip(labels or [""] * len(pts), ctl)]
             add("marker", pts, labels if self.show.get("marker_labels") else None, cols, True)
         return out
 
@@ -200,10 +203,10 @@ class Overlay:
                 continue
             if kind == "marker":
                 n_markers += 1; n_hidden += occ
-                r = 5.0
-                painter.setPen(QPen(QColor(0, 0, 0, 200), 3.0)); painter.setBrush(Qt.NoBrush)
+                r = 7.0
+                painter.setPen(QPen(QColor(0, 0, 0, 200), 5.0)); painter.setBrush(Qt.NoBrush)
                 painter.drawEllipse(QPointF(x, y), r, r)
-                painter.setPen(QPen(col, 2.0 if occ else 1.5))
+                painter.setPen(QPen(col, 3.0))
                 painter.setBrush(Qt.NoBrush if occ else QBrush(col))
                 painter.drawEllipse(QPointF(x, y), r, r)
             elif kind == "shape":

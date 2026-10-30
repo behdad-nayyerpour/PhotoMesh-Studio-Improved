@@ -393,15 +393,42 @@ class ProgressDialog(QDialog):
         self.stage.setWordWrap(True)
         self.bar = QProgressBar(); self.bar.setRange(0, 1000)       # 0.1 % steps
         self.bar.setFormat("%p%")
+        from .progress import WorkProgress
+        from PySide6.QtCore import QTimer
+        self._meter = WorkProgress()
+        self._stage_text = ""
+        self.stage_bar = QProgressBar(); self.stage_bar.setRange(0, 0)
+        self.timing = QLabel("Estimating remaining time..."); self.timing.setWordWrap(True)
+        self._timer = QTimer(self); self._timer.setInterval(1000)
+        self._timer.timeout.connect(lambda: self.timing.setText(self._stage_text + "\n" + self._meter.text()))
+        self._timer.start()
+        self.finished.connect(lambda *_: self._timer.stop())
         self.log = QPlainTextEdit(); self.log.setReadOnly(True)
         self.log.setMaximumBlockCount(2000)
         self.cancel_btn = QPushButton("Cancel")
         lay.addWidget(self.stage)
         lay.addWidget(self.bar)
+        self.bar.setFormat("Overall (weighted estimate): %p%")
+        lay.addWidget(self.stage_bar)
+        lay.addWidget(self.timing)
         lay.addWidget(self.log, 1)
         row = QHBoxLayout(); row.addStretch(1); row.addWidget(self.cancel_btn)
         lay.addLayout(row)
+        self.running = True
         self._label, self._detail, self._pct = "", "", 0.0
+
+    def reject(self):
+        if self.running:
+            self.cancel_btn.click()
+            self.stage.setText("Cancelling - waiting for the current operation to stop...")
+        else:
+            super().reject()
+
+    def closeEvent(self, event):
+        if self.running:
+            self.reject(); event.ignore()
+        else:
+            event.accept()
 
     def _show(self):
         txt = f"{self._label}...  {self._pct:.1f}%"
@@ -417,6 +444,17 @@ class ProgressDialog(QDialog):
         self._pct = max(self._pct, float(pct)) if pct < 100 else 100.0
         self.bar.setValue(int(round(self._pct * 10)))
         self._show()
+
+    def set_stage_progress(self, fraction, text):
+        self._stage_text = text
+        if fraction < 0:
+            self._meter.reset()
+            self.stage_bar.setRange(0, 0)
+        else:
+            self._meter.update(fraction * 1000, 1000)
+            self.stage_bar.setRange(0, 1000)
+            self.stage_bar.setValue(min(1000, int(fraction * 1000)))
+        self.timing.setText(text + "\n" + self._meter.text())
 
     def set_detail(self, pct, text):
         """Fine progress inside a step: e.g. depth-map pass, view and ETA."""

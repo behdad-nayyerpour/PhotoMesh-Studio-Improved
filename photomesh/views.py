@@ -178,10 +178,14 @@ class ModelView(QWidget):
 
     Right-click: Add Marker on the surface under the cursor (addMarkerRay
     carries the model-frame ray; the main window casts it on the surface)."""
+    markerAction = Signal(str, str)
+    moveMarkerRay = Signal(str, object, object)
     addMarkerRay = Signal(object, object)          # origin, direction (model frame)
 
     def __init__(self, parent=None):
         super().__init__(parent)
+        self._moving_marker = None
+        self.marker_states = {}
         self.flip = FLIP.copy()
         lay = QVBoxLayout(self); lay.setContentsMargins(0, 0, 0, 0)
         self.items = {}
@@ -239,6 +243,10 @@ class ModelView(QWidget):
             pal = self.palette(); pal.setColor(self.backgroundRole(), BACKGROUND); self.setPalette(pal)
         css = "QLabel{color:#e6e6e6;background:transparent;font-size:8pt;}"
         self.proj_label = QLabel(host); self.proj_label.setStyleSheet(css)
+        self.stale_label = QLabel(host)
+        self.stale_label.setStyleSheet("QLabel{color:white;background:#923e25;padding:6px;font-weight:bold;}")
+        self.stale_label.setAttribute(Qt.WA_TransparentForMouseEvents)
+        self.stale_label.hide()
         self.gizmo = AxisGizmo(host)
         self.proj_label.setAttribute(Qt.WA_TransparentForMouseEvents)
         self.ortho = False
@@ -251,10 +259,19 @@ class ModelView(QWidget):
         host = self._overlay_host
         self.proj_label.adjustSize()
         self.proj_label.move(8, 6)
+        self.stale_label.move(8, 30)
+        self.stale_label.setMaximumWidth(max(200, host.width() - 20))
+        self.stale_label.raise_()
         self.gizmo.move(max(0, host.width() - self.gizmo.width() - 4),
                         max(0, host.height() - self.gizmo.height() - 4))
         for w in (self.proj_label, self.gizmo):
             w.raise_()
+
+    def set_stale_message(self, text):
+        self.stale_label.setText(text)
+        self.stale_label.adjustSize()
+        self.stale_label.setVisible(bool(text))
+        self._place_overlays()
 
     def projection_text(self):
         if self.ortho:
@@ -271,6 +288,15 @@ class ModelView(QWidget):
 
     def eventFilter(self, obj, ev):
         t = ev.type()
+        if self._moving_marker and t == QEvent.KeyPress and ev.key() == Qt.Key_Escape:
+            self.cancel_marker_move(); return True
+        if self._moving_marker and t == QEvent.MouseButtonPress and ev.button() == Qt.LeftButton:
+            ray = self.ray_at(ev.position().x(), ev.position().y())
+            if ray is not None:
+                label = self._moving_marker
+                self.cancel_marker_move()
+                self.moveMarkerRay.emit(label, ray[0], ray[1])
+            return True
         if t in (QEvent.Resize, QEvent.Show):
             self._place_overlays()
         elif t in (QEvent.MouseMove, QEvent.Wheel, QEvent.MouseButtonRelease, QEvent.KeyPress):
@@ -495,6 +521,7 @@ class ModelView(QWidget):
         (disabled) markers cyan. Dots and labels are drawn in the final overlay
         pass (overlay3d), on top of every model; hidden ones are hollow."""
         self._marker_data = (pts, labels, control)
+        self.overlay.marker_states = self.marker_states
         self._remove("markers"); self._remove("marker_labels")
         if pts is None or not len(pts):
             self.overlay.markers = None
@@ -523,15 +550,42 @@ class ModelView(QWidget):
         o, d = o * f, d * f
         return o, d / np.linalg.norm(d)
 
+    def begin_marker_move(self, label):
+        self._moving_marker = label
+        (self.gl or self).setCursor(Qt.CrossCursor)
+        (self.gl or self).setFocus()
+
+    def cancel_marker_move(self):
+        self._moving_marker = None
+        (self.gl or self).unsetCursor()
+
+    def marker_at(self, x, y, tolerance=18):
+        if self.overlay.markers is None or not self.overlay.show.get("markers", True):
+            return None
+        from .overlay3d import project
+        mvp = self.view_mvp()
+        if mvp is None or self.gl is None:
+            return None
+        points, labels, _ = self.overlay.markers
+        xy, _z, valid = project(mvp, points, self.gl.width(), self.gl.height())
+        distance = np.linalg.norm(xy - [x, y], axis=1)
+        choices = np.flatnonzero(valid & (distance <= tolerance))
+        return labels[min(choices, key=lambda k: distance[k])] if len(choices) and labels else None
+
     def _context(self, pos):
         from PySide6.QtWidgets import QMenu
-        m = QMenu(self)
-        a = m.addAction("Add Marker")
+        from .marker_style import marker_menu
+        menu = QMenu(self)
+        label = self.marker_at(pos.x(), pos.y())
+        if label:
+            marker_menu(menu, label, lambda action, lab: self.markerAction.emit(action, lab))
+            menu.addSeparator()
+        a = menu.addAction("Add Marker")
         a.setToolTip("New marker on the surface under the cursor, projected into the photos")
-        if m.exec(self.gl.mapToGlobal(pos)) is a:
-            r = self.ray_at(pos.x(), pos.y())
-            if r is not None:
-                self.addMarkerRay.emit(r[0], r[1])
+        if menu.exec(self.gl.mapToGlobal(pos)) is a:
+            ray = self.ray_at(pos.x(), pos.y())
+            if ray is not None:
+                self.addMarkerRay.emit(ray[0], ray[1])
 
     def _overlay_changed(self):
         if self.gl is not None:
@@ -900,6 +954,7 @@ class PhotoView(QWidget):
     placeMarker = Signal(float, float)      # photo pixel coordinates
     removeMarker = Signal(str)
     addMarker = Signal(float, float)        # new marker pinned at this pixel
+    markerAction = Signal(str, str)
     pinMarker = Signal(str, float, float)   # pin an existing marker here
 
     def __init__(self, parent=None):
@@ -911,6 +966,7 @@ class PhotoView(QWidget):
         self.path = None
         self.shapes = []           # projected shapes (see set_shapes)
         self._shape_items = []
+        self._moving_marker = None
         self.markers = []          # (label, u, v, kind) kind: pinned | placed | predicted
         self.active_marker = None
         # Show Markers / Show Marker Labels, the same toggles as the Model and Ortho views
@@ -925,12 +981,30 @@ class PhotoView(QWidget):
 
     def eventFilter(self, obj, ev):
         """Ctrl+click: pin the active marker here (or add a new marker if none is active)."""
+        if ev.type() == QEvent.KeyPress and ev.key() == Qt.Key_Escape and self._moving_marker:
+            self.cancel_marker_move(); return True
+        if (self._moving_marker and ev.type() == QEvent.MouseButtonPress and ev.button() == Qt.LeftButton
+                and self.path is not None):
+            point = self.view.mapToScene(ev.position().toPoint())
+            label = self._moving_marker
+            self.cancel_marker_move()
+            self.pinMarker.emit(label, point.x(), point.y())
+            return True
         if (ev.type() == QEvent.MouseButtonPress and ev.button() == Qt.LeftButton
                 and ev.modifiers() & Qt.ControlModifier and self.path is not None):
             p = self.view.mapToScene(ev.position().toPoint())
             self.ctrl_click(p.x(), p.y())
             return True
         return False
+
+    def begin_marker_move(self, label):
+        self._moving_marker = label
+        self.view.viewport().setCursor(Qt.CrossCursor)
+        self.view.setFocus()
+
+    def cancel_marker_move(self):
+        self._moving_marker = None
+        self.view.viewport().unsetCursor()
 
     def ctrl_click(self, x, y):
         if self.active_marker:
@@ -940,6 +1014,7 @@ class PhotoView(QWidget):
 
     def clear(self):
         """Drop the displayed photo and overlays when the project changes."""
+        self.cancel_marker_move()
         sc = self.view.scene()
         sc.clear(); sc.setSceneRect(0, 0, 0, 0)
         self.view.resetTransform()
@@ -1079,8 +1154,8 @@ class PhotoView(QWidget):
         from PySide6.QtGui import QPolygonF
         col = {"pinned": QColor(40, 220, 60), "placed": QColor(60, 140, 255), "predicted": QColor(190, 190, 190)}
         for label, u, v, kind in self.markers:
-            c = col.get(kind, QColor(255, 200, 0))
-            pen = QPen(c, 2.5 if label == self.active_marker else 2); pen.setCosmetic(True)
+            c = col.get(kind, col["predicted"])
+            pen = QPen(c, 3.5 if label == self.active_marker else 3); pen.setCosmetic(True)
             if kind == "predicted":
                 pen.setStyle(Qt.DashLine)
             halo = QPen(QColor(0, 0, 0, 170), pen.widthF() + 2); halo.setCosmetic(True)
@@ -1104,7 +1179,7 @@ class PhotoView(QWidget):
                 continue
             txt = str(label) + {"pinned": "", "predicted": "  (predicted)"}.get(kind, "  (not pinned)")
             t = sc.addSimpleText(txt)
-            f = t.font(); f.setBold(True); t.setFont(f)
+            f = t.font(); f.setBold(True); f.setPointSizeF(max(10.0, f.pointSizeF())); t.setFont(f)
             t.setBrush(QBrush(c)); t.setPen(QPen(QColor(0, 0, 0, 200), 0.5))
             t.setPos(u, v); t.setFlag(QGraphicsItem.ItemIgnoresTransformations, True); t.setZValue(8)
             t.setTransform(t.transform().translate(14, -2 * r - 16))
@@ -1125,10 +1200,9 @@ class PhotoView(QWidget):
         near = self.markers_near(p.x(), p.y())
         if near:
             menu.addSeparator()
+        from .marker_style import marker_menu
         for m in near:
-            if m[3] != "pinned":
-                a = menu.addAction(f"Pin Marker '{m[0]}'")
-                a.triggered.connect(lambda _=False, m=m: self.pinMarker.emit(m[0], float(m[1]), float(m[2])))
+            marker_menu(menu, m[0], lambda action, lab: self.markerAction.emit(action, lab))
             if m[3] != "predicted":
                 a = menu.addAction(f"Remove Marker '{m[0]}' from this Photo")
                 a.triggered.connect(lambda _=False, lab=m[0]: self.removeMarker.emit(lab))

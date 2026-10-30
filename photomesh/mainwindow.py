@@ -22,7 +22,7 @@ from .dialogs import (AlignPhotosDialog, BuildPointCloudDialog, BuildModelDialog
                       BuildDEMDialog, BuildOrthomosaicDialog, ExportRasterDialog)
 from .menus import MENUS
 from .panes import (WorkspacePane, ReferencePane, MarkersPane, PhotosPane, ConsolePane,
-                    PropertiesPane, JobsPane, workspace_panel)
+                    PropertiesPane, JobsPane, workspace_panel, markers_panel)
 from . import procmeta
 from .plyio import load_ply, save_ply, ply_counts, vertex_normals
 from .project import Project, Chunk, IMAGE_EXTS, data_folder
@@ -89,6 +89,10 @@ class MainWindow(ReferenceMixin, MarkerEditMixin, ShapesMixin, QMainWindow):
         self._texData.connect(self._apply_texture)
         self._viewProgress.connect(self._show_view_progress)
         self.ortho_view.addMarkerRequested.connect(lambda X, Y, Z: self.add_marker_at_ortho(X, Y, Z))
+        self.photo_view.markerAction.connect(lambda action, label: self.marker_view_action(action, label, "photo"))
+        self.ortho_view.markerAction.connect(lambda action, label: self.marker_view_action(action, label, "ortho"))
+        self.model_view.markerAction.connect(lambda action, label: self.marker_view_action(action, label, "model"))
+        self.model_view.moveMarkerRay.connect(self._move_marker_ray)
         self.ortho_view.placeMarkerRequested.connect(
             lambda label, X, Y, Z: self.add_marker_at_ortho(X, Y, Z, label=label))
         self.ortho_view.coordinatesChanged.connect(lambda t: self.statusBar().showMessage(t) if t else
@@ -105,6 +109,8 @@ class MainWindow(ReferenceMixin, MarkerEditMixin, ShapesMixin, QMainWindow):
         apply_dialog_setting()
         from .busy import BusyIndicator
         self.busy_indicator = BusyIndicator(self.statusBar())
+        self.ortho_view.workChanged.connect(lambda name, done, total, active: self.busy_indicator.background(
+            name, name if active else None, done, total))
         self.colmap_label = QLabel()
         self.statusBar().addPermanentWidget(self.colmap_label)
         self._update_colmap_label()
@@ -146,7 +152,7 @@ class MainWindow(ReferenceMixin, MarkerEditMixin, ShapesMixin, QMainWindow):
         self.docks = {
             "Workspace": self._dock("Workspace", self._workspace_panel(), L, "ws"),
             "Reference": self._dock("Reference", self.reference, L, "ref"),
-            "Markers": self._dock("Markers", self.markers_pane, L, "markers"),
+            "Markers": self._dock("Markers", markers_panel(self.markers_pane), L, "markers"),
             "Properties": self._dock("Properties", self.properties, L, "props"),
             "Photos": self._dock("Photos", self.photos, B, "photos"),
             "Console": self._dock("Console", self.console, B, "console"),
@@ -596,6 +602,7 @@ class MainWindow(ReferenceMixin, MarkerEditMixin, ShapesMixin, QMainWindow):
         self._marker_selection_changed()
         self.photos.refresh(self.chunk)
         self._update_title()
+        self._update_stale_banners()
 
     def _update_title(self):
         self.setWindowTitle(window_title(self.project.path, self.project.modified))
@@ -631,8 +638,10 @@ class MainWindow(ReferenceMixin, MarkerEditMixin, ShapesMixin, QMainWindow):
             os.path.exists(os.path.join(self._model_dir(ch), "points3D.bin"))
         if not jobs and not want_markers and not want_stats:
             self.view_loading = False; self.view_progress.hide()
+            self.busy_indicator.background("view-loader")
             return
         self.view_loading = True
+        self.busy_indicator.background("view-loader", "Loading 3D view")
         self._show_view_progress(gen, "Loading view...")
         import threading
 
@@ -677,6 +686,7 @@ class MainWindow(ReferenceMixin, MarkerEditMixin, ShapesMixin, QMainWindow):
 
     def _show_view_progress(self, gen, text):
         if gen == self._view_gen:
+            self.busy_indicator.background("view-loader", "Loading 3D view", text=text)
             self.view_progress.setFormat(text); self.view_progress.show()
             self.statusBar().showMessage(text)
 
@@ -716,6 +726,7 @@ class MainWindow(ReferenceMixin, MarkerEditMixin, ShapesMixin, QMainWindow):
             self.load_tiled_view()
         self.view_loading = False
         self.view_progress.hide()
+        self.busy_indicator.background("view-loader")
         self.statusBar().showMessage("Ready", 2000)
 
     def wait_view_loaded(self, timeout=60.0):
@@ -833,6 +844,23 @@ class MainWindow(ReferenceMixin, MarkerEditMixin, ShapesMixin, QMainWindow):
                 procmeta.properties(ch, "chunk")
         self.properties.show_props({k: ("" if v is None else v) for k, v in rows})
 
+    def _move_marker_ray(self, label, origin, direction):
+        point, source = self.surface_hit(origin, direction)
+        if point is None:
+            self.statusBar().showMessage(f"Move Marker: {source}", 6000)
+            return
+        world = self.ortho_from_local(point)
+        self.add_marker_at_ortho(*world, label=label)
+
+    def _update_stale_banners(self):
+        ch = self.chunk
+        model = (ch.meta or {}).get("model") or {}
+        reason = model.get("stale") or (ch.texture or {}).get("stale") or (ch.tiled_model or {}).get("stale")
+        self.model_view.set_stale_message("Update required: rebuild the 3D model - " + str(reason) if reason else "")
+        reasons = [d.get("stale") for d in (ch.orthomosaic, ch.dem) if d and d.get("stale")]
+        self.ortho_view.stale_message = "Update required: rebuild Orthomosaic / DEM - " + str(reasons[0]) if reasons else ""
+        self.ortho_view.update()
+
     def _marker_edited(self, label, col, text):
         # applied after the edit signal returns (the table is refilled)
         chunk = self.chunk
@@ -924,6 +952,8 @@ class MainWindow(ReferenceMixin, MarkerEditMixin, ShapesMixin, QMainWindow):
         """Discard view state belonging to the project or chunk being replaced."""
         self._view_gen += 1
         self.view_loading = False; self.view_progress.hide()
+        self.busy_indicator.background("view-loader")
+        self.busy_indicator.background("texture-loader")
         self._marker_init()
         self._model_cache = (None,)
         self._marker_xyz_cache = None
@@ -1467,11 +1497,21 @@ class MainWindow(ReferenceMixin, MarkerEditMixin, ShapesMixin, QMainWindow):
                               progress=lambda i, n, p, r: report(i, n, "", r), cancel=cancelled)
         job = BackgroundJob(work, name="thumbnails")
         job.batch.connect(self._apply_thumbs)
-        job.progress.connect(lambda d, n, _t: (self.thumb_progress.setMaximum(n), self.thumb_progress.setValue(d)))
+        from .progress import WorkProgress
+        thumb_meter = WorkProgress()
+        def thumbnail_progress(d, n, text):
+            if job is not self._thumb_job:
+                return
+            thumb_meter.update(d, n)
+            self.thumb_progress.setRange(0, n); self.thumb_progress.setValue(d)
+            self.thumb_progress.setToolTip(thumb_meter.text())
+            self.busy_indicator.background("thumbnails", "Thumbnails", d, n, text)
+        job.progress.connect(thumbnail_progress)
         job.done.connect(lambda r, e, j=job: self._thumbs_done(j, r, e))
         self._thumb_job = job
         self.thumb_progress.setRange(0, len(paths)); self.thumb_progress.setValue(0)
         self.thumb_progress.show(); self.thumb_cancel.show()
+        self.busy_indicator.background("thumbnails", "Thumbnails", 0, len(paths))
         _log.info("thumbnails: %d photos -> %s", len(paths), cache)
         return job.start()
 
@@ -1499,6 +1539,7 @@ class MainWindow(ReferenceMixin, MarkerEditMixin, ShapesMixin, QMainWindow):
         if job is not self._thumb_job:
             return
         self.thumb_progress.hide(); self.thumb_cancel.hide()
+        self.busy_indicator.background("thumbnails")
         bad = sum(1 for v in (result or {}).values() if "error" in v)
         _log.info("thumbnails finished: %d done, %d unreadable, cancelled=%s, error=%s",
                   len(result or {}), bad, job.cancelled(), err)
@@ -1532,9 +1573,13 @@ class MainWindow(ReferenceMixin, MarkerEditMixin, ShapesMixin, QMainWindow):
         self.runner = cm.PipelineRunner(exe, steps, self)
         self.runner.progress.connect(dlg.set_progress)
         self.runner.detail.connect(dlg.set_detail)
+        self.runner.stageProgress.connect(dlg.set_stage_progress)
+        self.runner.stageProgress.connect(lambda fraction, text: self.busy_indicator.background(
+            "pipeline-detail", title, fraction * 1000 if fraction >= 0 else 0, 1000 if fraction >= 0 else 0, text))
         self.runner.log.connect(dlg.append)
         self.runner.log.connect(self.console.write)
         dlg.cancel_btn.clicked.connect(self.runner.cancel)
+        dlg.cancel_btn.clicked.connect(lambda: dlg.stage.setText("Cancelling - waiting for the process to stop..."))
         t0 = time.perf_counter()
         stage_t = []                                   # [(label, start)]
 
@@ -1547,6 +1592,8 @@ class MainWindow(ReferenceMixin, MarkerEditMixin, ShapesMixin, QMainWindow):
         mark = self.console.mark()
         load_tb = []
         def done(ok, msg):
+            dlg.running = False
+            dlg._timer.stop()
             dt = time.perf_counter() - t0
             self.jobs.add_job(f"[{'done' if ok else 'failed'}] {job}  ({dt:.1f} s)")
             self.chunk.log.append(f"{title}: {'OK' if ok else msg} ({dt:.1f} s)")
@@ -1596,12 +1643,14 @@ class MainWindow(ReferenceMixin, MarkerEditMixin, ShapesMixin, QMainWindow):
 
         def end_busy(*_):                    # wait cursor restored first (also on error / cancel)
             if not ended:
-                ended.append(1); self.busy_indicator.end()
+                ended.append(1); self.busy_indicator.background("pipeline-detail")
+                self.busy_indicator.end()
         self.runner.finished.connect(end_busy)
         self.runner.finished.connect(done)
         self.runner.busy = True
         self.runner.finished.connect(lambda *_: setattr(self.runner, "busy", False))
         try:
+            dlg.show(); QApplication.processEvents()
             self.runner.start()
         except BaseException:
             end_busy(); raise
@@ -1869,6 +1918,7 @@ class MainWindow(ReferenceMixin, MarkerEditMixin, ShapesMixin, QMainWindow):
         gen = self._view_gen
         flip = None if ch.georef else np.asarray(self.model_view.flip, float)
         mesh, d = ch.model_ply, t["dir"]
+        self.busy_indicator.background("texture-loader", "Loading textured model")
 
         def work():
             try:
@@ -1885,6 +1935,7 @@ class MainWindow(ReferenceMixin, MarkerEditMixin, ShapesMixin, QMainWindow):
     def _apply_texture(self, gen, data):
         if gen != self._view_gen:
             return
+        self.busy_indicator.background("texture-loader")
         if isinstance(data, Exception):
             self.log(f"Cannot show texture: {data}"); return
         self.model_view.set_textured(*data)
@@ -2257,6 +2308,8 @@ class MainWindow(ReferenceMixin, MarkerEditMixin, ShapesMixin, QMainWindow):
                 if X is not None:
                     P = self.ortho_from_local(X)
                     mk.append((m["label"], float(P[0]), float(P[1])))
+        from .marker_style import marker_state
+        self.ortho_view.marker_states = {m["label"]: marker_state(m) for m in ch.markers or []}
         self.ortho_view.set_markers(mk)
 
     def show_ortho(self, kind):

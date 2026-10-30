@@ -184,6 +184,8 @@ class Marker:
     enabled: bool = True                 # True = control point, False = check point
     projections: dict = field(default_factory=dict)   # photo label -> [x, y, pinned]
     est: list | None = None              # estimated position (CRS units)
+    disabled: bool = False               # excluded from adjustment/report, independent of Control/Check
+    locked: bool = False                 # explicit user lock against accidental repositioning
 
     def to_dict(self):
         return asdict(self)
@@ -874,7 +876,7 @@ def camera_gps_metric(model, gps, crs, zone_hint=None):
 def reference_status(model, markers, crs, gps=None):
     """Count usable controls, not merely imported coordinate rows."""
     names = name_index(model)
-    refs = [m for m in markers if m.enabled and m.ref is not None]
+    refs = [m for m in markers if m.enabled and not m.disabled and m.ref is not None]
     usable = 0
     for m in refs:
         X, n = triangulate_marker(model, m.projections, names)
@@ -907,7 +909,7 @@ def run_local_task(cfg, log=print):
     if baseline <= 1e-10:
         raise ValueError("Local optimization needs cameras with a nonzero baseline.")
     names = name_index(model)
-    markers = [Marker(**m) for m in cfg.get("markers", [])]
+    markers = [Marker(**m) for m in cfg.get("markers", []) if not m.get("disabled", False)]
     obs = {}
     for m in markers:
         X, _n = triangulate_marker(model, m.projections, names)
@@ -977,7 +979,7 @@ def run_task(cfg, log=print):
         shutil.copytree(mdir, backup)
     model = cio.read_model(mdir)
     crs = CRS.parse(cfg.get("crs", ""))
-    markers = [Marker(**m) for m in cfg.get("markers", [])]
+    markers = [Marker(**m) for m in cfg.get("markers", []) if not m.get("disabled", False)]
     names = name_index(model)
     # ---- metric frame
     zone_hint = None

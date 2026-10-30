@@ -79,11 +79,48 @@ def parse_accuracy(text):
 
 
 class MarkerEditMixin:
+    def marker_view_action(self, action, label, view="photo"):
+        """Shared undoable marker menu; move modes are cancelled with Escape."""
+        ms = self._marker_objs()
+        m = next((m for m in ms if m.label == label), None)
+        if m is None:
+            return False
+        if action == "delete":
+            return self.remove_markers([label])
+        if action == "move":
+            self._select_marker_row(label)
+            target = {"photo": self.photo_view, "ortho": self.ortho_view, "model": self.model_view}[view]
+            target.begin_marker_move(label)
+            self.statusBar().showMessage(f"Move {label}: click its new position; Escape cancels")
+            return True
+        self._markers_snapshot()
+        if action == "ignore":
+            m.disabled = True
+        elif action == "use":
+            m.disabled = False
+        elif action == "pin":
+            m.disabled = False
+            if view == "photo":
+                self._mk_undo.pop()  # pin_marker takes its own undo snapshot
+                k = self.current_photo
+                if not (0 <= k < len(self.chunk.cameras)):
+                    return False
+                stem = g._stem(self.chunk.cameras[k].label)
+                point = next((p for lab, *p in self.photo_view.markers if lab == label), None)
+                return self.pin_marker(label, point[0], point[1]) if point else False
+            m.locked = True
+        else:
+            return False
+        self._commit_markers(ms, f"Marker {label}: {action}")
+        return True
+
     # ------------------------------------------------------------ state / undo
     def _marker_init(self):
         self._mk_undo, self._mk_redo = [], []
         self._ref_pending = {}            # label -> [x, y, z] being typed (incomplete reference)
         self._photo_filter = None         # (labels, set of photo indices) or None
+        for view in (self.photo_view, self.ortho_view, self.model_view):
+            view.cancel_marker_move()
 
     def _markers_snapshot(self):
         self._mk_undo.append((copy.deepcopy(self.chunk.markers or []), copy.deepcopy(self._ref_pending)))
@@ -429,6 +466,7 @@ class MarkerEditMixin:
             pinned = {g._stem(k): v for k, v in target.projections.items() if len(v) < 3 or v[2]}
             target.projections = dict(pred, **pinned)
             target.est = None
+            target.locked = False
         self._commit_markers(ms, f"{'Placed' if target is not None else 'Added'} marker {label} in the ortho view at ({X:.3f}, {Y:.3f}, {Z:.3f}) "
                                  f"(height from the {src}); projected into {len(pred)} photos (unpinned)")
         self._select_marker_row(label)

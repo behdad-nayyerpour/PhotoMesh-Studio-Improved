@@ -100,6 +100,8 @@ class OrthoView(QWidget):
     heightReady = Signal(int, object)
     coordinatesChanged = Signal(str)
     shapeClicked = Signal(int)                     # index into the chunk's shape set, -1 = nothing hit
+    workChanged = Signal(str, int, int, bool)
+    markerAction = Signal(str, str)
     placeMarkerRequested = Signal(str, float, float, object)
     addMarkerRequested = Signal(float, float, object)   # world X, Y, Z (None = not loaded / no height)
 
@@ -108,6 +110,9 @@ class OrthoView(QWidget):
         self.pts = None
         self.cams = []
         self.markers = []                 # (label, X, Y) world
+        self.stale_message = ""
+        self._moving_marker = None
+        self.marker_states = {}
         self.active_marker = None
         self.layers = {}                  # kind -> RasterLayer
         self.vis = {"ortho": True, "dem": True, "markers": True, "marker_labels": True, "shapes": True}
@@ -118,6 +123,8 @@ class OrthoView(QWidget):
         self.cache = OrderedDict()
         self.max_tiles = 600
         self.pending = set()
+        self._tile_requested = 0
+        self._tile_completed = 0
         self.pool = ThreadPoolExecutor(3, thread_name_prefix="ortho-tiles")
         self.gen = 0
         self.center = None                # world (X, Y)
@@ -149,9 +156,12 @@ class OrthoView(QWidget):
 
     def reset_project(self):
         """Release all data and pending raster work from the previous project."""
+        self.cancel_marker_move()
         self.clear_rasters()
         self.gen += 1
         self.cache.clear(); self.pending.clear()
+        self._tile_requested = self._tile_completed = 0
+        self.workChanged.emit("Loading Ortho tiles", 0, 0, False)
         self.pts = None; self.cams = []; self.markers = []; self.shapes = []
         self.selected_shape = None
         self.active_marker = None
@@ -165,6 +175,27 @@ class OrthoView(QWidget):
         """Offset added to local coordinates (cameras/points) to get world coordinates."""
         self.offset = np.zeros(3) if offset is None else np.asarray(offset, float)
         self.geographic, self.unit = bool(geographic), unit
+
+    def begin_marker_move(self, label):
+        self._moving_marker = label
+        self.setCursor(Qt.CrossCursor); self.setFocus()
+
+    def cancel_marker_move(self):
+        self._moving_marker = None
+        self.unsetCursor()
+
+    def keyPressEvent(self, event):
+        if event.key() == Qt.Key_Escape:
+            self.cancel_marker_move()
+        else:
+            super().keyPressEvent(event)
+
+    def marker_at(self, x, y, tolerance=18):
+        if not self.vis.get("markers", True):
+            return None
+        hits = [(sum((a - b) ** 2 for a, b in zip(self.to_screen(X, Y), (x, y))), label)
+                for label, X, Y in self.markers]
+        return min(hits)[1] if hits and min(hits)[0] <= tolerance ** 2 else None
 
     def set_active_marker(self, label):
         self.active_marker = label
@@ -345,6 +376,8 @@ class OrthoView(QWidget):
         if key in self.pending:
             return
         self.pending.add(key)
+        self._tile_requested += 1
+        self.workChanged.emit("Loading Ortho tiles", self._tile_completed, self._tile_requested, True)
         gen = self.gen
 
         def work():
@@ -359,8 +392,12 @@ class OrthoView(QWidget):
         self.pool.submit(work)
 
     def _tile_ready(self, gen, key, img):
+        if gen != self.gen:
+            return
         self.pending.discard(key)
-        if gen != self.gen or isinstance(img, Exception):
+        self._tile_completed += 1
+        self.workChanged.emit("Loading Ortho tiles", self._tile_completed, self._tile_requested, bool(self.pending))
+        if isinstance(img, Exception):
             return
         self.cache[key] = img
         while len(self.cache) > self.max_tiles:
@@ -448,16 +485,26 @@ class OrthoView(QWidget):
         if self.vis.get("shapes", True) and self.shapes:
             self._draw_shapes(p)
         if self.vis.get("markers", True) and self.markers:
-            p.setFont(QFont("Sans", 8))
+            font = QFont("Sans", 10); font.setBold(True); p.setFont(font)
             for lab, X, Y in self.markers:
                 x, y = self.to_screen(X, Y)
                 if -20 < x < self.width() + 20 and -20 < y < self.height_px() + 20:
-                    p.setPen(QPen(QColor(255, 220, 40), 1.5)); p.setBrush(Qt.NoBrush)
+                    from .marker_style import color
+                    col = color(self.marker_states.get(lab, "predicted"))
+                    p.setPen(QPen(col, 3.0)); p.setBrush(Qt.NoBrush)
                     p.drawLine(QPointF(x - 6, y), QPointF(x + 6, y)); p.drawLine(QPointF(x, y - 6), QPointF(x, y + 6))
-                    p.drawEllipse(QPointF(x, y), 4, 4)
+                    p.drawEllipse(QPointF(x, y), 6, 6)
                     if self.vis.get("marker_labels", True):
-                        p.setPen(QColor(255, 235, 120)); p.drawText(QPointF(x + 6, y - 6), str(lab))
+                        rect = p.fontMetrics().boundingRect(str(lab)).adjusted(-4, -2, 4, 2)
+                        rect.moveBottomLeft(QPointF(x + 10, y - 8).toPoint())
+                        p.fillRect(rect, QColor(15, 15, 20, 210))
+                        p.setPen(col); p.drawText(rect, Qt.AlignCenter, str(lab))
         self._draw_overlay(p)
+        if self.stale_message:
+            p.fillRect(0, 0, self.width(), 36, QColor(145, 60, 35, 235))
+            p.setPen(Qt.white)
+            font = QFont("Sans", 10); font.setBold(True); p.setFont(font)
+            p.drawText(QRectF(8, 0, self.width() - 16, 36), Qt.AlignVCenter, self.stale_message)
 
     def set_transparency(self, on, opacity=None):
         if opacity is not None:
@@ -571,6 +618,12 @@ class OrthoView(QWidget):
         return X, Y, self.z_at(X, Y)
 
     def mousePressEvent(self, e):
+        if self._moving_marker and e.button() == Qt.LeftButton:
+            X, Y, Z = self.coordinates_at(e.position().x(), e.position().y())
+            label = self._moving_marker
+            self.cancel_marker_move()
+            self.placeMarkerRequested.emit(label, X, Y, Z)
+            return
         if e.button() in (Qt.LeftButton, Qt.MiddleButton):
             self._drag = (e.position(), self.center)
         self._press = e.position() if e.button() == Qt.LeftButton else None
@@ -609,6 +662,11 @@ class OrthoView(QWidget):
 
     def contextMenuEvent(self, e):
         m = QMenu(self)
+        from .marker_style import marker_menu
+        hit = self.marker_at(e.pos().x(), e.pos().y())
+        if hit:
+            marker_menu(m, hit, lambda action, lab: self.markerAction.emit(action, lab))
+            m.addSeparator()
         X, Y, Z = self.coordinates_at(e.pos().x(), e.pos().y())
         if any(lay.visible for lay in self.layers.values()):
             if self.active_marker is not None:

@@ -4,6 +4,17 @@
 
 ## English
 
+### 0.1.17 (2026-10-30)
+
+- Progress dialogs open before work starts, separate observed stage progress from the weighted overall estimate, and show elapsed time plus measured-rate ETA where available. Unknown totals remain indeterminate.
+- Pipeline planning callbacks run off the GUI thread. Partial process output is buffered so split progress lines are retained.
+- Background view, texture, Ortho tile and thumbnail jobs report activity in the status bar with a busy cursor, without clearing another active job's status.
+- Added Delete / Pin / Ignore / Use / Move marker actions in Photo, Ortho and Model views. Move uses a crosshair and Escape cancels. Ignore is separate from Control/Check classification.
+- Larger, thicker marker symbols and labels share green pinned, blue placed/used and grey unused/ignored states.
+- Camera refinement marks camera-derived products stale and displays rebuild notices above the 3D and Ortho views.
+- Added Control/Check filter tabs and per-group and overall coordinate/pixel RMSE summaries to the Markers pane. Missing error measurements are shown as a dash.
+- No runtime dependency changes.
+
 ### 0.1.16 (2026-10-29)
 
 - Fixed marker overlays and marker undo/redo history leaking into a new/opened project or another chunk; queued edits from the previous view are discarded.

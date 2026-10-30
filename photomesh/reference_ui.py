@@ -137,6 +137,8 @@ class ReferenceMixin:
     def _show_markers_3d(self, items):
         if not items:
             self.model_view.set_markers(None); return
+        from .marker_style import marker_state
+        self.model_view.marker_states = {m["label"]: marker_state(m) for m in self.chunk.markers}
         self.model_view.set_markers(np.array([x for _l, x, _e in items]), labels=[l for l, _x, _e in items],
                                     control=[e for _l, _x, e in items])
 
@@ -166,7 +168,8 @@ class ReferenceMixin:
         for m in self._marker_objs():
             p = {g._stem(a): v for a, v in m.projections.items()}.get(stem)
             if p is not None:
-                items.append((m.label, p[0], p[1], "pinned" if len(p) < 3 or p[2] else "placed"))
+                kind = "predicted" if m.disabled else ("pinned" if len(p) < 3 or p[2] else "placed")
+                items.append((m.label, p[0], p[1], kind))
             elif model is not None and stem in names:
                 X = self._marker_model_xyz(m, model, names)
                 if X is not None:
@@ -210,7 +213,7 @@ class ReferenceMixin:
                 m.enabled = enabled
         self.chunk.markers = [m.to_dict() for m in ms]
         self.set_modified()
-        self._show_markers_3d(self._marker_positions())     # control (yellow) / check (cyan) colour
+        self._update_view_markers()
 
     def add_marker(self):
         ms = self._marker_objs()
@@ -321,6 +324,7 @@ class ReferenceMixin:
             res = json.load(open(cfg["result"], encoding="utf-8"))
             if res.get("similarity") is not None:
                 products_after_georef(ch, res["similarity"], self.log)
+            self._invalidate_camera_products(ch)
             if not res.get("local_only"):
                 ch.georef = {k: res.get(k) for k in ("offset", "similarity", "crs", "crs_kind", "zone", "rows",
                                                      "control_rmse", "check_rmse")}
@@ -356,6 +360,20 @@ class ReferenceMixin:
                             transformed=[] if cfg.get("local_only") else cfg["transform_files"])
             ch.meta.pop("sparse_stats", None)
         self._run("Optimize Cameras", steps, loaded, meta)
+
+    def _invalidate_camera_products(self, ch):
+        """Camera refinement invalidates camera-derived products, not imported rasters."""
+        reason = "Cameras changed - rebuild this product"
+        for key in ("point_cloud", "model", "texture", "depth_maps"):
+            if key in ch.meta:
+                ch.meta[key]["stale"] = reason
+        if ch.model_ply:
+            ch.meta.setdefault("model", {})["stale"] = reason
+        for d in (ch.texture, ch.tiled_model, ch.orthomosaic, ch.dem):
+            if d and d.get("format") != "imported":
+                d["stale"] = reason
+        if hasattr(self, "_update_stale_banners"):
+            self._update_stale_banners()
 
     def _export_sparse_steps(self, wd):
         sp = os.path.join(wd, "sparse", "0")
@@ -393,7 +411,7 @@ class ReferenceMixin:
         if not ch.markers or not os.path.isdir(self._model_dir()):
             QMessageBox.information(self, "Refine Markers", "Align photos and import markers first."); return
         wd = self.project.default_workdir(ch)
-        cfg = {"model": self._model_dir(), "image_root": cm.image_dir(wd), "markers": ch.markers,
+        cfg = {"model": self._model_dir(), "image_root": cm.image_dir(wd), "markers": [m for m in ch.markers if not m.get("disabled", False)],
                "offset": (ch.georef or {}).get("offset"), "use_reference": bool(ch.georef),
                "search": 25, "output": os.path.join(wd, "refined_markers.json"),
                # model-frame positions computed here (CRS-aware: geographic references are

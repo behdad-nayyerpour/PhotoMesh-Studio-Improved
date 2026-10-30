@@ -100,3 +100,40 @@ class FusionMeter(_Meter):
         if self.points:
             txt += f", {self.points / 1e6:.1f} M points"
         return min(1.0, (k - 0.5) / max(1, n)), txt + (f" - about {fmt_eta(eta)} left" if eta else "")
+
+
+class WorkProgress:
+    """Observed work only. Unknown totals stay indeterminate; ETA needs a measured rate."""
+    def __init__(self, clock=time.monotonic):
+        self.clock = clock
+        self.reset()
+
+    def reset(self):
+        self.start = self.clock()
+        self.done, self.total = 0, 0
+        self.samples = []
+
+    def update(self, done, total):
+        done, total = max(0, float(done)), max(0, float(total))
+        if total != self.total or done < self.done:
+            self.reset()
+        now = self.clock()
+        if done > self.done:
+            self.samples.append((now, done))
+            self.samples = self.samples[-30:]
+        self.done, self.total = min(done, total) if total else done, total
+
+    def text(self):
+        now = self.clock()
+        elapsed = fmt_eta(now - self.start)
+        if not self.total:
+            return f"Elapsed {elapsed} - working; remaining time unavailable"
+        fraction = min(1., self.done / self.total)
+        eta = None
+        if len(self.samples) >= 2:
+            t0, d0 = self.samples[0]
+            t1, d1 = self.samples[-1]
+            if d1 > d0 and t1 - t0 >= 2:
+                eta = (now - t0) / (d1 - d0) * max(0, self.total - d1)
+        left = f"about {fmt_eta(eta)} left" if eta is not None else "estimating remaining time"
+        return f"{fraction:.1%} ({self.done:g}/{self.total:g}) - elapsed {elapsed} - {left}"

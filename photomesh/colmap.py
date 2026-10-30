@@ -459,6 +459,7 @@ def count_points3d(path):
 # ----------------------------------------------------------------- runner
 class PipelineRunner(QObject):
     progress = Signal(int, str)   # percent, stage label (constant per step)
+    stageProgress = Signal(float, str)
     detail = Signal(float, str)   # fine percent, e.g. "Depth maps: geometric pass 12/640 - about 40 min left"
     log = Signal(str)
     finished = Signal(bool, str)
@@ -474,6 +475,8 @@ class PipelineRunner(QObject):
         self.cancelled = False
         self._ended = False
         self._tail = []
+        self._output_buffer = ""
+        self._callback_job = None
         self.failure = None          # details of the failed step, for error reports
         self._cmd = None
         self.finished.connect(self._mark_end)
@@ -500,6 +503,9 @@ class PipelineRunner(QObject):
             self.proc.kill()
 
     def _next(self):
+        if self.cancelled:
+            self.finished.emit(False, "Cancelled by user")
+            return
         if self.idx >= 0:
             self.done_weight += self.steps[self.idx][2]
         self.idx += 1
@@ -514,16 +520,26 @@ class PipelineRunner(QObject):
             self.idx += 0
             return self._next()
         if label != "gate":
+            self.stageProgress.emit(-1.0, label)
             self.progress.emit(int(100 * self.done_weight / self.total), label)
         if callable(args):
-            try:
-                extra = args() or []
-            except Exception as e:
-                self._fail(f"'{label}' failed: {e}", exc=e)
-                return
-            self.steps[self.idx + 1:self.idx + 1] = extra
-            self.total += sum(w for _, _, w in extra)
-            return self._next()
+            from .bgjob import BackgroundJob
+            job = BackgroundJob(lambda report, cancelled: args() or [], name=label, parent=self)
+            self._callback_job = job
+            def complete(extra, error):
+                self._callback_job = None
+                if self.cancelled:
+                    self.finished.emit(False, "Cancelled by user")
+                elif error:
+                    self._fail(f"'{label}' failed: {error}", exc=job.exception)
+                else:
+                    self.steps[self.idx + 1:self.idx + 1] = extra or []
+                    self.total += sum(w for _, _, w in (extra or []))
+                    self._next()
+                job.deleteLater()
+            job.done.connect(complete)
+            job.start()
+            return
         try:
             prog, pargs = resolve_cmd(self.exe, args)
         except Exception as e:
@@ -533,6 +549,7 @@ class PipelineRunner(QObject):
         self._cmd = [prog] + list(pargs)
         self.log.emit(f"> {os.path.basename(prog)} {' '.join(pargs)}")
         self._tail = []
+        self._output_buffer = ""
         self.proc = QProcess(self)
         if args and args[0] == PYTHON:
             from PySide6.QtCore import QProcessEnvironment
@@ -550,7 +567,10 @@ class PipelineRunner(QObject):
         text = bytes(self.proc.readAllStandardOutput()).decode("utf-8", "ignore")
         label, _, w = self.steps[self.idx]
         meter = getattr(self.steps[self.idx][1], "meter", None)
-        for line in text.splitlines():
+        self._output_buffer += text.replace("\r", "\n")
+        lines = self._output_buffer.split("\n")
+        self._output_buffer = lines.pop()
+        for line in lines:
             if line.strip():
                 self.log.emit(line.rstrip())
                 self._tail = (self._tail + [line.rstrip()])[-40:]
@@ -561,13 +581,15 @@ class PipelineRunner(QObject):
                     r = None
                 if r:
                     frac, txt = r
+                    self.stageProgress.emit(min(1.0, max(0.0, frac)), txt)
                     fine = 100.0 * (self.done_weight + w * frac) / self.total
                     self.progress.emit(min(int(fine), 99), label)
                     self.detail.emit(min(fine, 99.9), txt)
                 continue
             m = re.search(r"\[(\d+)/(\d+)\]", line)
             if m and int(m.group(2)) > 0:
-                frac = int(m.group(1)) / int(m.group(2))
+                frac = min(1.0, int(m.group(1)) / int(m.group(2)))
+                self.stageProgress.emit(frac, line.strip())
                 pct = int(100 * (self.done_weight + w * frac) / self.total)
                 self.progress.emit(min(pct, 99), label)
 
@@ -593,6 +615,9 @@ class PipelineRunner(QObject):
             self._fail(f"Failed to start: {self.exe}")
 
     def _done(self, code, status):
+        if self._output_buffer:
+            self._output_buffer += "\n"
+            self._read()
         if self._ended:
             return
         if self.cancelled:

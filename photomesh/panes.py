@@ -446,8 +446,13 @@ class MarkersPane(QTableWidget):
     def _fill(self, chunk):
         ms = getattr(chunk, "markers", None) or []
         rows = {r.get("label"): r for r in (getattr(chunk, "georef", {}) or {}).get("rows", [])}
+        selected = set(self.selected_labels())
         self.clearContents()
         self.setRowCount(len(ms))
+        self._marker_groups = [bool(m.get("enabled", True)) for m in ms]
+        self.error_summary = marker_error_summary(ms, rows)
+        if hasattr(self, "_summary_label"):
+            self._summary_label.setText(marker_summary_html(self.error_summary))
         for r, m in enumerate(ms):
             pend = (self.pending or {}).get(m["label"])
             ref = pend or m.get("ref") or [None, None, None]
@@ -466,7 +471,11 @@ class MarkersPane(QTableWidget):
                 if k == 0:
                     it.setFlags(it.flags() | Qt.ItemIsUserCheckable)
                     it.setCheckState(Qt.Checked if m.get("enabled", True) else Qt.Unchecked)
-                    it.setToolTip("checked = control point, unchecked = check point; double-click to rename")
+                    it.setToolTip(("Control point" if m.get("enabled", True) else "Check point") +
+                                  (" - ignored" if m.get("disabled", False) else "") +
+                                  "; checkbox changes Control/Check; double-click to rename")
+                    if m.get("disabled"):
+                        it.setForeground(QBrush(QColor(150, 150, 150)))
                     it.setData(ROLE + 1, bool(m.get("enabled", True)))
                 elif k in (1, 2, 3, 4):
                     it.setToolTip("Double-click to edit" + (" (incomplete: enter X, Y and Z)" if pend else ""))
@@ -476,6 +485,16 @@ class MarkersPane(QTableWidget):
                 elif k == 6:
                     it.setToolTip(f"{pinned} pinned / {len(proj)} placed (unpinned ones are blue flags)")
                 self.setItem(r, k, it)
+            if m["label"] in selected:
+                from PySide6.QtCore import QItemSelectionModel
+                self.selectionModel().select(self.model().index(r, 0),
+                                             QItemSelectionModel.Select | QItemSelectionModel.Rows)
+        self.filter_group(getattr(self, "_group", 0))
+
+    def filter_group(self, group):
+        self._group = group
+        for row, control in enumerate(getattr(self, "_marker_groups", [])):
+            self.setRowHidden(row, (group == 1 and not control) or (group == 2 and control))
 
     def _changed(self, it):
         if self._busy:
@@ -523,6 +542,57 @@ class MarkersPane(QTableWidget):
         a = m.exec(self.viewport().mapToGlobal(pos))
         if a:
             self.markerAction.emit(a.text(), labels)
+
+
+
+def marker_error_summary(markers, rows):
+    """Coordinate RMSE per marker; pixel RMSE weighted by observation count."""
+    import math
+    summary = {}
+    for group in ("Control points", "Check points", "All points"):
+        values, pixels, weights = [], [], []
+        eligible = [m for m in markers if not m.get("disabled", False) and
+                    (group == "All points" or bool(m.get("enabled", True)) == (group == "Control points"))]
+        for marker in eligible:
+            row = rows.get(marker["label"], {})
+            error = row.get("total")
+            if error is not None and math.isfinite(error):
+                values.append(error)
+            pixel = row.get("pix")
+            if pixel is not None and math.isfinite(pixel):
+                weight = max(1, len(marker.get("projections", {})))
+                pixels.append(pixel); weights.append(weight)
+        summary[group] = {"count": len(eligible), "measured": len(values),
+                          "error": math.sqrt(sum(e * e for e in values) / len(values)) if values else None,
+                          "pixel": math.sqrt(sum(e * e * w for e, w in zip(pixels, weights)) / sum(weights))
+                                   if weights else None}
+    return summary
+
+
+def marker_summary_html(summary):
+    out = ["<b>Total Error (RMSE)</b><table><tr><th>Group</th><th>N</th><th>Error (m)</th><th>Error (pix)</th></tr>"]
+    for name, row in summary.items():
+        error = "—" if row["error"] is None else f'{row["error"]:.3f}'
+        pixel = "—" if row["pixel"] is None else f'{row["pixel"]:.3f}'
+        out.append(f'<tr><td>{name}</td><td>{row["count"]}</td><td>{error}</td><td>{pixel}</td></tr>')
+    return "".join(out) + "</table>"
+
+
+def markers_panel(table):
+    from PySide6.QtWidgets import QTabBar
+    panel = QWidget()
+    layout = QVBoxLayout(panel); layout.setContentsMargins(2, 2, 2, 2)
+    groups = QTabBar()
+    for text in ("All points", "Control points", "Check points"):
+        groups.addTab(text)
+    groups.currentChanged.connect(table.filter_group)
+    table._summary_label = QLabel()
+    table._summary_label.setTextFormat(Qt.RichText)
+    table._summary_label.setToolTip("Coordinate RMSE uses points with current measured errors. "
+                                   "Pixel RMSE is weighted by projection count. Ignored points are excluded; "
+                                   "a dash means no measured error is available.")
+    layout.addWidget(groups); layout.addWidget(table, 1); layout.addWidget(table._summary_label)
+    return panel
 
 
 class PhotosPane(QListWidget):

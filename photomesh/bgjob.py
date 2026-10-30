@@ -45,6 +45,7 @@ class BackgroundJob(QObject):
         self.finished = False
         self.result = None
         self.error = None
+        self.exception = None
         self.traceback = ""
         self.thread = None
 
@@ -72,6 +73,7 @@ class BackgroundJob(QObject):
         try:
             self.result = self.fn(self._report, self.cancelled)
         except Exception as e:  # noqa: BLE001
+            self.exception = e
             self.error = f"{type(e).__name__}: {e}"
             notes = [str(n) for n in getattr(e, "__notes__", ())]
             if notes:
@@ -97,34 +99,46 @@ class BackgroundJob(QObject):
         return self.finished
 
 
-def run_modal(parent, title, label, fn, total, min_duration_ms=400):
+def run_modal(parent, title, label, fn, total, min_duration_ms=0):
     """Run fn(report, cancelled) in a thread behind a cancellable progress
     dialog. Returns (result, cancelled, error)."""
     from PySide6.QtWidgets import QProgressDialog, QApplication
+    from .progress import WorkProgress
+    meter = WorkProgress()
     job = BackgroundJob(fn, name=title)
     dlg = QProgressDialog(label, "Cancel", 0, max(1, total), parent)
     dlg.setWindowTitle(title)
     dlg.setWindowModality(Qt.WindowModal)
-    dlg.setMinimumDuration(min_duration_ms)
+    dlg.setMinimumDuration(0)
     dlg.setAutoClose(False); dlg.setAutoReset(False)
     dlg.canceled.connect(job.cancel)
     loop = QEventLoop()
 
     def prog(d, n, text):
-        dlg.setMaximum(max(1, n)); dlg.setValue(min(d, n))
-        if text:
-            dlg.setLabelText(f"{label}\n{text}")
+        meter.update(d, n)
+        dlg.setRange(0, n if n > 0 else 0)
+        if n > 0:
+            dlg.setValue(min(d, n))
+        dlg._work_text = text
+        refresh()
+    def refresh():
+        dlg.setLabelText(f"{label}\n{getattr(dlg, '_work_text', '')}\n{meter.text()}")
+    timer = QTimer(dlg); timer.setInterval(1000); timer.timeout.connect(refresh)
     job.progress.connect(prog)
     job.done.connect(lambda *_: loop.quit())
     busy = getattr(parent, "busy_indicator", None)       # wait cursor + 'Working: ...' in the status bar
     if busy is not None:
         busy.begin(title)
     try:
+        dlg.setRange(0, total if total > 0 else 0)
+        refresh(); dlg.show(); QApplication.processEvents()
+        timer.start()
         job.start()
         if not job.finished:
             loop.exec()
         QApplication.processEvents()
     finally:
+        timer.stop()
         if busy is not None:
             busy.end()
     cancelled = job.cancelled()
