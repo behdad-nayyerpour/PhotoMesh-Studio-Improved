@@ -218,3 +218,21 @@ def test_edited_marker_does_not_keep_old_error_measurements(window, tmp_path):
     window.pin_marker(label, 510., 400., k=0)
     assert ch.georef["rows"] == []
     assert window.markers_pane.error_summary["All points"]["error"] is None
+
+
+def test_pinned_surface_marker_requires_move_and_is_not_automatically_refined(window, tmp_path, monkeypatch):
+    import json
+    import os
+    ch = _scene(window, tmp_path)
+    label = window.add_marker_at_ortho(110., 100., 0.)
+    window.marker_view_action("pin", label, "ortho")
+    before = dict(_marker(window, label)["projections"])
+    assert window.add_marker_at_ortho(115., 100., 0., label=label) is None
+    assert _marker(window, label)["projections"] == before
+    monkeypatch.setattr(window, "_run", lambda *a, **kw: None)
+    window.refine_markers()
+    cfg = json.load(open(os.path.join(ch.workdir, "refine_task.json")))
+    assert label not in [m["label"] for m in cfg["markers"]]
+    window.ortho_view.moveMarkerRequested.emit(label, 115., 100., 0.)
+    assert not _marker(window, label)["locked"]
+    assert window.ortho_view.markers[0][1:] == pytest.approx((115., 100.), abs=1e-3)

@@ -435,6 +435,9 @@ class MarkerEditMixin:
         if label is not None and target is None:
             self._marker_error("Place Marker", f"Marker '{label}' is no longer in this chunk.")
             return None
+        if target is not None and target.locked and not replace_pins:
+            self.statusBar().showMessage(f"Marker {label} is pinned; choose Move Marker to reposition it.", 6000)
+            return None
         src = ""
         if Z is None:
             Z, src = self._ortho_height(X, Y)

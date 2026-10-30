@@ -429,7 +429,7 @@ class ReferenceMixin:
         if not ch.markers or not os.path.isdir(self._model_dir()):
             QMessageBox.information(self, "Refine Markers", "Align photos and import markers first."); return
         wd = self.project.default_workdir(ch)
-        cfg = {"model": self._model_dir(), "image_root": cm.image_dir(wd), "markers": [m for m in ch.markers if not m.get("disabled", False)],
+        cfg = {"model": self._model_dir(), "image_root": cm.image_dir(wd), "markers": [m for m in ch.markers if not m.get("disabled", False) and not m.get("locked", False)],
                "offset": (ch.georef or {}).get("offset"), "use_reference": bool(ch.georef),
                "search": 25, "output": os.path.join(wd, "refined_markers.json"),
                # model-frame positions computed here (CRS-aware: geographic references are
