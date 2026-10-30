@@ -584,6 +584,12 @@ class MainWindow(ReferenceMixin, MarkerEditMixin, ShapesMixin, QMainWindow):
             if d.get("gpu_name"):
                 self.gpu_label.setToolTip(f"{d['gpu_name']}: GPU load and memory (NVIDIA NVML)")
             self.gpu_label.show()
+        tile = self.model_view.tiled_item()
+        if tile is not None and tile.pending:
+            self.busy_indicator.background("model-tiles", "Loading 3D tiles",
+                                           tile.stats["loaded"], tile.stats["requests"])
+        else:
+            self.busy_indicator.background("model-tiles")
 
     def _update_colmap_label(self):
         exe = cm.find_colmap()
@@ -848,6 +854,7 @@ class MainWindow(ReferenceMixin, MarkerEditMixin, ShapesMixin, QMainWindow):
         point, source = self.surface_hit(origin, direction)
         if point is None:
             self.statusBar().showMessage(f"Move Marker: {source}", 6000)
+            self.model_view.begin_marker_move(label)
             return
         world = self.ortho_from_local(point)
         self.add_marker_at_ortho(*world, label=label)
@@ -1573,9 +1580,12 @@ class MainWindow(ReferenceMixin, MarkerEditMixin, ShapesMixin, QMainWindow):
         self.runner = cm.PipelineRunner(exe, steps, self)
         self.runner.progress.connect(dlg.set_progress)
         self.runner.detail.connect(dlg.set_detail)
-        self.runner.stageProgress.connect(dlg.set_stage_progress)
-        self.runner.stageProgress.connect(lambda fraction, text: self.busy_indicator.background(
-            "pipeline-detail", title, fraction * 1000 if fraction >= 0 else 0, 1000 if fraction >= 0 else 0, text))
+        stage_signal = getattr(self.runner, "stageProgress", None)
+        if stage_signal is not None:
+            stage_signal.connect(dlg.set_stage_progress)
+            stage_signal.connect(lambda fraction, text: self.busy_indicator.background(
+                "pipeline-detail", title, fraction * 1000 if fraction >= 0 else 0,
+                1000 if fraction >= 0 else 0, text))
         self.runner.log.connect(dlg.append)
         self.runner.log.connect(self.console.write)
         dlg.cancel_btn.clicked.connect(self.runner.cancel)

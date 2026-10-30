@@ -62,7 +62,10 @@ class BusyIndicator:
         if on:
             title = next(reversed(self.tasks))
             _count, meter, detail = self.tasks[title]
-            self.label.setText(f"Working: {detail or title} - {meter.text()}")
+            if not detail and meter.clock() - meter.start < 1:
+                self.label.setText(f"Working: {title}...")
+            else:
+                self.label.setText(f"Working: {detail or title} - {meter.text()}")
             self.label.setToolTip("\n".join(f"{name}: {data[2] or data[1].text()}" for name, data in self.tasks.items()))
         else:
             self.timer.stop()

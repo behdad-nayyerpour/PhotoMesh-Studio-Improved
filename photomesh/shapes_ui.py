@@ -809,6 +809,7 @@ class ShapesMixin:
         if getattr(self, "_photo_occl_busy", None) == tag:
             return
         self._photo_occl_busy = tag
+        self.busy_indicator.background("photo-occlusion", "Checking photo visibility")
 
         def work():
             try:
@@ -824,6 +825,7 @@ class ShapesMixin:
     def _photo_occlusion_ready(self, tag, res):
         if getattr(self, "_photo_occl_busy", None) == tag:
             self._photo_occl_busy = None
+            self.busy_indicator.background("photo-occlusion")
         if isinstance(res, Exception):
             self.log(f"Shapes overlay on the photo (occlusion): {res}"); return
         cur = (getattr(self, "current_photo", -1), self._shapes_ver, self.selected_shape, id(self.chunk))
@@ -853,6 +855,7 @@ class ShapesMixin:
         if key is None or not ch.shapes or self._occl["key"] == key or self._occl["busy"]:
             return
         self._occl["busy"] = True
+        self.busy_indicator.background("model-occlusion", "Preparing model visibility")
         gen = self._shapes_ver
 
         def work():
@@ -873,6 +876,7 @@ class ShapesMixin:
 
     def _occlusion_ready(self, _gen, res):
         self._occl["busy"] = False
+        self.busy_indicator.background("model-occlusion")
         key, sc = res
         if isinstance(sc, Exception):
             self.log(f"Shapes: no occlusion test on photos ({sc})"); return

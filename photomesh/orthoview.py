@@ -280,7 +280,9 @@ class OrthoView(QWidget):
             src = self.layers["ortho"].info.get("height_path")
         self.zgrid = None
         if not src:
+            self.workChanged.emit("Loading elevation grid", 0, 0, False)
             return
+        self.workChanged.emit("Loading elevation grid", 0, 0, True)
         gen = self.gen
 
         def work():
@@ -302,6 +304,8 @@ class OrthoView(QWidget):
         threading.Thread(target=work, name="ortho-height", daemon=True).start()
 
     def _height_ready(self, gen, res):
+        if gen == self.gen:
+            self.workChanged.emit("Loading elevation grid", 1, 1, False)
         if gen == self.gen and not isinstance(res, Exception):
             self.zgrid = res
             self._update_coords()
