@@ -661,8 +661,8 @@ class MainWindow(ReferenceMixin, MarkerEditMixin, ShapesMixin, QMainWindow):
 
         def work():
             out = {"errors": []}
-            for key, path in jobs:
-                emit(self._viewProgress, gen, {"tie": "Loading tie points...", "cloud": "Loading point cloud...",
+            for completed, (key, path) in enumerate(jobs):
+                emit(self._viewProgress, gen, f"[{completed}/{len(jobs) + int(want_stats) + int(want_markers)}] " + {"tie": "Loading tie points...", "cloud": "Loading point cloud...",
                                               "mesh": "Loading model..."}[key])
                 try:
                     d = load_ply(path)
@@ -674,7 +674,7 @@ class MainWindow(ReferenceMixin, MarkerEditMixin, ShapesMixin, QMainWindow):
                 if gen != self._view_gen:
                     return                       # superseded by a newer reload
             if want_stats:
-                emit(self._viewProgress, gen, "Tie point statistics...")
+                emit(self._viewProgress, gen, f"[{len(jobs)}/{len(jobs) + int(want_stats) + int(want_markers)}] Tie point statistics...")
                 try:
                     model = self._sparse_model()
                     if model is not None:
@@ -682,7 +682,7 @@ class MainWindow(ReferenceMixin, MarkerEditMixin, ShapesMixin, QMainWindow):
                 except Exception as e:  # noqa: BLE001
                     out["errors"].append(f"Tie point statistics: {e}")
             if want_markers:
-                emit(self._viewProgress, gen, "Locating markers...")
+                emit(self._viewProgress, gen, f"[{len(jobs) + int(want_stats)}/{len(jobs) + int(want_stats) + int(want_markers)}] Locating markers...")
                 try:
                     out["markers"] = self._marker_positions()
                 except Exception as e:  # noqa: BLE001
@@ -694,7 +694,16 @@ class MainWindow(ReferenceMixin, MarkerEditMixin, ShapesMixin, QMainWindow):
 
     def _show_view_progress(self, gen, text):
         if gen == self._view_gen:
-            self.busy_indicator.background("view-loader", "Loading 3D view", text=text)
+            import re
+            count = re.search(r"\[(\d+)/(\d+)\]", text)
+            if count:
+                done, total = map(int, count.groups())
+                self.view_progress.setRange(0, total)
+                self.view_progress.setValue(done)
+                self.busy_indicator.background("view-loader", "Loading 3D view", done, total, text)
+            else:
+                self.view_progress.setRange(0, 0)
+                self.busy_indicator.background("view-loader", "Loading 3D view", text=text)
             self.view_progress.setFormat(text); self.view_progress.show()
             self.statusBar().showMessage(text)
 
@@ -2379,11 +2388,28 @@ class MainWindow(ReferenceMixin, MarkerEditMixin, ShapesMixin, QMainWindow):
             QMessageBox.information(self, "Build Orthomosaic", "Build the model (mesh) or a DEM first."); return
         surfaces = (["Mesh"] if have_mesh else []) + (["DEM"] if have_dem else [])
         from .ortho import estimate_gsd
-        try:
-            gsd = estimate_gsd(mdir, ch.tie_points_ply, bool(ch.georef), ch.texture)
-        except Exception:  # noqa: BLE001
-            gsd = 0.0
-        plan = self._ortho_plan(ch, mdir, have_mesh, have_dem)
+        warnings = []
+        def prepare(report, cancelled):
+            report(0, 2, "Estimating photo resolution")
+            try:
+                gsd = estimate_gsd(mdir, ch.tie_points_ply, bool(ch.georef), ch.texture)
+            except Exception:
+                gsd = 0.0
+            if cancelled():
+                return None
+            report(1, 2, "Estimating orthomosaic bounds")
+            plan = self._ortho_plan(ch, mdir, have_mesh, have_dem, log=warnings.append)
+            report(2, 2, "Ready")
+            return gsd, plan
+        prepared, cancelled, error = run_modal(self, "Prepare Orthomosaic", "Reading reconstruction geometry...",
+                                                prepare, 2)
+        for warning in warnings:
+            self.log(warning)
+        if cancelled or error or prepared is None:
+            if error:
+                self.show_error("Prepare Orthomosaic", error)
+            return
+        gsd, plan = prepared
         dlg = BuildOrthomosaicDialog(self, surfaces, crs=self._crs_text(ch), unit="m" if ch.georef else "units",
                                      gsd=gsd, bounds=self._world_bounds_guess(ch), plan=plan)
         if not dlg.exec():
@@ -2417,7 +2443,7 @@ class MainWindow(ReferenceMixin, MarkerEditMixin, ShapesMixin, QMainWindow):
         # a failed / cancelled rebuild leaves the previous orthomosaic in place: show it again
         self._run("Build Orthomosaic", steps, loaded, meta, params=s, on_fail=self.load_ortho_view)
 
-    def _ortho_plan(self, ch, mdir, have_mesh, have_dem):
+    def _ortho_plan(self, ch, mdir, have_mesh, have_dem, log=None):
         """Estimated orthomosaic extent for the dialog's size read-out (None if unknown)."""
         from .ortho import plan_orthomosaic
         try:
@@ -2428,7 +2454,7 @@ class MainWindow(ReferenceMixin, MarkerEditMixin, ShapesMixin, QMainWindow):
                 return {"bounds": (b[0] - off[0], b[1] - off[1], b[2] - off[0], b[3] - off[1]), "off": off,
                         "clipped": False}
         except Exception as e:  # noqa: BLE001 - only the size read-out is missing
-            self.log(f"Build Orthomosaic: no size estimate ({e})")
+            (log or self.log)(f"Build Orthomosaic: no size estimate ({e})")
         return None
 
     def _check_ortho_size(self, s, plan, gsd, unit):

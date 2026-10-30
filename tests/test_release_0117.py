@@ -195,3 +195,17 @@ def test_explicit_surface_move_can_replace_pins_and_is_undoable(window, tmp_path
     assert window.ortho_view.markers[0][1:] == pytest.approx((110., 100.), abs=1e-3)
     assert window.undo_markers()
     assert _marker(window, label)["projections"] == old
+
+
+def test_runner_keeps_split_counter_lines(qtbot):
+    import sys
+    from photomesh.colmap import PipelineRunner
+    script = ("import sys,time;sys.stdout.write('[1/');sys.stdout.flush();time.sleep(.05);"
+              "sys.stdout.write('2]\\n');sys.stdout.flush()")
+    runner = PipelineRunner(sys.executable, [("Counting", ["-u", "-c", script], 1)])
+    fractions = []
+    runner.stageProgress.connect(lambda fraction, text: fractions.append(fraction))
+    with qtbot.waitSignal(runner.finished, timeout=5000) as done:
+        runner.start()
+    assert done.args[0] is True
+    assert .5 in fractions
