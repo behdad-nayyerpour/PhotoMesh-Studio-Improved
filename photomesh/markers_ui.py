@@ -153,6 +153,7 @@ class MarkerEditMixin:
 
     def _commit_markers(self, ms, msg=None):
         """Store markers (after a snapshot was taken)."""
+        self._invalidate_marker_error_rows(ms)
         self.chunk.markers = [m.to_dict() for m in ms]
         self.set_modified()
         self._refresh_markers_pane()

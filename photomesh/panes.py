@@ -563,7 +563,7 @@ def marker_error_summary(markers, rows):
                 values.append(error)
             pixel = row.get("pix")
             if pixel is not None and math.isfinite(pixel):
-                weight = max(1, len(marker.get("projections", {})))
+                weight = max(1, row.get("n") or len(marker.get("projections", {})))
                 pixels.append(pixel); weights.append(weight)
         summary[group] = {"count": len(eligible), "measured": len(values),
                           "error": math.sqrt(sum(e * e for e in values) / len(values)) if values else None,
@@ -573,11 +573,11 @@ def marker_error_summary(markers, rows):
 
 
 def marker_summary_html(summary):
-    out = ["<b>Total Error (RMSE)</b><table><tr><th>Group</th><th>N</th><th>Error (m)</th><th>Error (pix)</th></tr>"]
+    out = ["<b>Total Error (RMSE)</b><table><tr><th>Group</th><th>Measured / points</th><th>Error (m)</th><th>Error (pix)</th></tr>"]
     for name, row in summary.items():
         error = "—" if row["error"] is None else f'{row["error"]:.3f}'
         pixel = "—" if row["pixel"] is None else f'{row["pixel"]:.3f}'
-        out.append(f'<tr><td>{name}</td><td>{row["count"]}</td><td>{error}</td><td>{pixel}</td></tr>')
+        out.append(f'<tr><td>{name}</td><td>{row["measured"]}/{row["count"]}</td><td>{error}</td><td>{pixel}</td></tr>')
     return "".join(out) + "</table>"
 
 

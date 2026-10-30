@@ -209,3 +209,12 @@ def test_runner_keeps_split_counter_lines(qtbot):
         runner.start()
     assert done.args[0] is True
     assert .5 in fractions
+
+
+def test_edited_marker_does_not_keep_old_error_measurements(window, tmp_path):
+    ch = _scene(window, tmp_path)
+    label = window.add_marker_at_photo(500., 400., k=0)
+    ch.georef = {"rows": [{"label": label, "total": .1, "pix": .5}]}
+    window.pin_marker(label, 510., 400., k=0)
+    assert ch.georef["rows"] == []
+    assert window.markers_pane.error_summary["All points"]["error"] is None

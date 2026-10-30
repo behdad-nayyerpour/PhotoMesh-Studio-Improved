@@ -82,7 +82,19 @@ class ReferenceMixin:
         if hasattr(self, "_markers_snapshot"):
             self._markers_snapshot()              # Edit > Undo restores the previous markers
 
+    def _invalidate_marker_error_rows(self, markers):
+        """Old residuals must not be presented as measurements of edited placements."""
+        before = {m["label"]: m for m in self.chunk.markers or []}
+        changed = {m.label for m in markers if m.label not in before or
+                   before[m.label].get("ref") != m.ref or
+                   before[m.label].get("projections", {}) != m.projections}
+        if changed and self.chunk.georef:
+            self.chunk.georef["rows"] = [row for row in self.chunk.georef.get("rows", [])
+                                        if row["label"] not in changed]
+            self.chunk.georef["control_rmse"] = self.chunk.georef["check_rmse"] = None
+
     def _store_markers(self, ms):
+        self._invalidate_marker_error_rows(ms)
         self.chunk.markers = [m.to_dict() for m in ms]
         self.set_modified()
         if hasattr(self, "_refresh_markers_pane"):
@@ -335,6 +347,7 @@ class ReferenceMixin:
                                                      "control_rmse", "check_rmse")}
                 for r in ch.georef.get("rows") or []:
                     r["pix"] = ((res.get("markers") or {}).get(r["label"]) or {}).get("pix")
+                    r["n"] = ((res.get("markers") or {}).get(r["label"]) or {}).get("n")
             else:
                 # Existing CRS/offset still describe the same frame, but old errors no longer apply.
                 if ch.georef:
