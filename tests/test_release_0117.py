@@ -88,6 +88,9 @@ def test_photo_move_click_pins_same_marker(window, tmp_path, qtbot):
     window.open_photo(0)
     view = window.photo_view
     view.begin_marker_move(label)
+    qtbot.keyClick(view.view, Qt.Key_Escape)
+    assert view._moving_marker is None
+    view.begin_marker_move(label)
     scene = view.view.mapToScene(QPoint(100, 100))
     qtbot.mouseClick(view.view.viewport(), Qt.LeftButton, pos=QPoint(100, 100))
     point = _marker(window, label)["projections"]["img_0001"]

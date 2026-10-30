@@ -981,6 +981,7 @@ class PhotoView(QWidget):
         self.view.setContextMenuPolicy(Qt.CustomContextMenu)
         self.view.customContextMenuRequested.connect(self._context)
         self.view.viewport().installEventFilter(self)
+        self.view.installEventFilter(self)
 
     def eventFilter(self, obj, ev):
         """Ctrl+click: pin the active marker here (or add a new marker if none is active)."""
