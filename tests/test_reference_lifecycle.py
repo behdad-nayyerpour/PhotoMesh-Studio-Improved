@@ -94,7 +94,23 @@ def test_ortho_context_places_selected_control_without_creating_duplicate(window
     def menu_exec(menu, *a):
         actions[:] = [a.text() for a in menu.actions()]
         next(a for a in menu.actions() if a.text() == "Place Marker: G1").trigger()
-    monkeypatch.setattr(QMenu, "exec", menu_exec)
+    # Patch the module factory: some PySide versions retain native exec bindings.
+    from photomesh import orthoview
+    from PySide6.QtGui import QAction
+    class TestMenu:
+        def __init__(self, parent):
+            self.parent, self.items = parent, []
+        def addAction(self, text):
+            action = QAction(text, self.parent)
+            self.items.append(action)
+            return action
+        def addSeparator(self):
+            self.addAction("")
+        def actions(self):
+            return self.items
+        def exec(self, *args):
+            return menu_exec(self, *args)
+    monkeypatch.setattr(orthoview, "QMenu", TestMenu)
     try:
         ov.contextMenuEvent(QContextMenuEvent(QContextMenuEvent.Mouse, QPoint(20, 20)))
     finally:
