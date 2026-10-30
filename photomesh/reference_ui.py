@@ -142,7 +142,13 @@ class ReferenceMixin:
 
     def _update_view_markers(self):
         self._show_markers_3d(self._marker_positions())
+        self._marker_selection_changed()
+        self._update_ortho_markers()
+
+    def _marker_selection_changed(self):
         self._update_photo_markers()
+        labels = self.markers_pane.selected_labels()
+        self.ortho_view.set_active_marker(labels[0] if len(labels) == 1 else None)
 
     def _update_photo_markers(self):
         k = getattr(self, "current_photo", -1)
@@ -284,20 +290,50 @@ class ReferenceMixin:
                                               os.path.join(wd, "dense", "fused.ply")) if p]}
         if not ch.georef and cfg["camera_gps"] and (ch.crs or "") == "" and s["use_cameras"]:
             cfg["crs"] = "EPSG:4326"
+        status = g.reference_status(self._sparse_model(), self._marker_objs(),
+                                    g.CRS.parse(cfg["crs"]), cfg["camera_gps"])
+        ready = ((s["use_markers"] and status["usable"] >= 3) or
+                 (s["use_cameras"] and status["gps"] >= 3))
+        if not ready:
+            msg = (f"{status['imported']} markers imported; {status['references']} enabled with complete XYZ; "
+                   f"{status['usable']} usable controls on at least two aligned photos; "
+                   f"{status['gps']} camera GPS positions usable in the selected CRS.\n\n"
+                   "Georeferencing needs at least 3 non-collinear controls or camera GPS positions. "
+                   "Imported XYZ alone is insufficient: place each control on at least two aligned photos.\n\n"
+                   "Optimize cameras in the existing frame instead? This uses tie points and enabled marker "
+                   "projections, ignores reference coordinates and GPS, and does not georeference the model.")
+            if not s["bundle"]:
+                QMessageBox.information(self, "Optimize Cameras", msg +
+                                        "\nEnable Bundle adjustment for optimization without georeferencing.")
+                return
+            if QMessageBox.question(self, "Optimize without georeferencing?", msg,
+                                    QMessageBox.Yes | QMessageBox.No, QMessageBox.No) != QMessageBox.Yes:
+                return
+            cfg["local_only"] = True
         path = os.path.join(wd, "georef_task.json")
         with open(path, "w", encoding="utf-8") as f:
             json.dump(cfg, f, default=float)
-        steps = [("Optimizing cameras (georeferencing)", [cm.PYTHON, "georef", path], 85)] + \
+        title = "Optimizing cameras (local bundle adjustment)" if cfg.get("local_only") else "Optimizing cameras (georeferencing)"
+        steps = [(title, [cm.PYTHON, "georef", path], 85)] + \
             self._export_sparse_steps(wd)
 
         def loaded():
             res = json.load(open(cfg["result"], encoding="utf-8"))
             if res.get("similarity") is not None:
                 products_after_georef(ch, res["similarity"], self.log)
-            ch.georef = {k: res.get(k) for k in ("offset", "similarity", "crs", "crs_kind", "zone", "rows",
-                                                 "control_rmse", "check_rmse")}
-            for r in ch.georef.get("rows") or []:
-                r["pix"] = ((res.get("markers") or {}).get(r["label"]) or {}).get("pix")
+            if not res.get("local_only"):
+                ch.georef = {k: res.get(k) for k in ("offset", "similarity", "crs", "crs_kind", "zone", "rows",
+                                                     "control_rmse", "check_rmse")}
+                for r in ch.georef.get("rows") or []:
+                    r["pix"] = ((res.get("markers") or {}).get(r["label"]) or {}).get("pix")
+            else:
+                # Existing CRS/offset still describe the same frame, but old errors no longer apply.
+                if ch.georef:
+                    ch.georef.update(rows=[], control_rmse=None, check_rmse=None)
+                for d in (ch.orthomosaic, ch.dem, ch.tiled_model):
+                    if d and d.get("format") != "imported":
+                        d["stale"] = "built before camera optimization"
+                self.log("Cameras optimized without georeferencing. Rebuild dense products to use the new cameras.")
             ms = self._marker_objs()
             for m in ms:
                 e = (res.get("markers") or {}).get(m.label, {})
@@ -305,14 +341,14 @@ class ReferenceMixin:
             ch.markers = [m.to_dict() for m in ms]
             self._reload_alignment(ch, wd)
             c, k = res.get("control_rmse"), res.get("check_rmse")
-            msg = "Georeferenced. " + (f"Control RMSE {c['total']:.3f} m (n={c['n']}). " if c else "") + \
+            msg = ("Cameras optimized in the existing frame. " if res.get("local_only") else "Georeferenced. ") + (f"Control RMSE {c['total']:.3f} m (n={c['n']}). " if c else "") + \
                 (f"Check RMSE {k['total']:.3f} m (n={k['n']})." if k else "")
             self.log(msg + f" Report: {cfg['report']}")
             self.statusBar().showMessage(msg, 15000)
         def meta(dt, stages):
             from . import procmeta
             res = json.load(open(cfg["result"], encoding="utf-8"))
-            procmeta.record(ch, "georeference", params={k: cfg[k] for k in ("crs", "use_markers", "use_cameras",
+            procmeta.record(ch, "camera_optimization" if cfg.get("local_only") else "georeference", params={k: cfg[k] for k in ("crs", "use_markers", "use_cameras",
                                                                              "accuracies", "bundle", "tie_points",
                                                                              "fit_intrinsics")},
                             seconds=dt, stages=stages, control_rmse=res.get("control_rmse"),

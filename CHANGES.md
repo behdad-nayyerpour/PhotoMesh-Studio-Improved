@@ -6,6 +6,12 @@
 
 ### 0.1.16 (2026-10-29)
 
+- Fixed marker overlays and marker undo/redo history leaking into a new/opened project or another chunk; queued edits from the previous view are discarded.
+- The Ortho tab no longer draws the model point cloud or camera positions as a substitute for an orthomosaic/DEM.
+- Added Place Marker for the single selected marker in the Ortho context menu. It reuses that marker and preserves its reference, accuracy, control/check setting and manually pinned photo observations. Add Marker still creates a new marker.
+- Optimize Cameras checks usable references before starting. Insufficient controls/GPS now offer an explicit local-only bundle adjustment, retaining the input camera frame/scale without claiming georeferencing. Existing dense products must be rebuilt after camera optimization.
+- Fixed EXIF GPS conversion for UTM projects and duplicate-photo/degenerate marker triangulation. Added regressions for issue #1 and these GUI workflows.
+
 - Added a dedicated File > Export > Export Mesh Contours command beside Export Model. The user chooses a positive contour interval, and horizontal mesh sections are exported to DXF as elevation-bearing 3D polylines.
 - Contour polylines use separate minor and major CAD layers: four intermediate levels are minor and multiples of 5 times the interval in world Z are major. Both layers are explicitly defined in the DXF.
 - Contours use world coordinates, preserve closed loops and separate components, and split at ambiguous mesh section junctions. Export runs off the UI thread and cancellation preserves the previous destination.

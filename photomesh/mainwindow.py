@@ -89,6 +89,8 @@ class MainWindow(ReferenceMixin, MarkerEditMixin, ShapesMixin, QMainWindow):
         self._texData.connect(self._apply_texture)
         self._viewProgress.connect(self._show_view_progress)
         self.ortho_view.addMarkerRequested.connect(lambda X, Y, Z: self.add_marker_at_ortho(X, Y, Z))
+        self.ortho_view.placeMarkerRequested.connect(
+            lambda label, X, Y, Z: self.add_marker_at_ortho(X, Y, Z, label=label))
         self.ortho_view.coordinatesChanged.connect(lambda t: self.statusBar().showMessage(t) if t else
                                                    self.statusBar().clearMessage())
         from PySide6.QtWidgets import QToolButton
@@ -172,7 +174,7 @@ class MainWindow(ReferenceMixin, MarkerEditMixin, ShapesMixin, QMainWindow):
         self.markers_pane.markerActivated.connect(self._goto_marker)
         self.photos.photoActivated.connect(self.open_photo)
         self.markers_pane.markerToggled.connect(self.toggle_marker)
-        self.markers_pane.itemSelectionChanged.connect(self._update_photo_markers)
+        self.markers_pane.itemSelectionChanged.connect(self._marker_selection_changed)
         self.photo_view.placeMarker.connect(self.place_marker)
         self.photo_view.removeMarker.connect(self.remove_marker_projection)
         self.photo_view.addMarker.connect(lambda u, v: self.add_marker_at_photo(u, v))
@@ -590,7 +592,8 @@ class MainWindow(ReferenceMixin, MarkerEditMixin, ShapesMixin, QMainWindow):
     def refresh_all(self):
         self.workspace.refresh(self.project)
         self.reference.refresh(self.chunk)
-        self.markers_pane.refresh(self.chunk)
+        self._refresh_markers_pane()
+        self._marker_selection_changed()
         self.photos.refresh(self.chunk)
         self._update_title()
 
@@ -832,7 +835,10 @@ class MainWindow(ReferenceMixin, MarkerEditMixin, ShapesMixin, QMainWindow):
 
     def _marker_edited(self, label, col, text):
         # applied after the edit signal returns (the table is refilled)
-        QTimer.singleShot(0, lambda: self.edit_marker_cell(label, col, text))
+        chunk = self.chunk
+        generation = self._view_gen
+        QTimer.singleShot(0, lambda: self.edit_marker_cell(label, col, text)
+                          if self.chunk is chunk and self._view_gen == generation else None)
 
     def _workspace_action(self, action, ci):
         if action == "Add Chunk":
@@ -915,6 +921,12 @@ class MainWindow(ReferenceMixin, MarkerEditMixin, ShapesMixin, QMainWindow):
         """Discard view state belonging to the project or chunk being replaced."""
         self._view_gen += 1
         self.view_loading = False; self.view_progress.hide()
+        self._marker_init()
+        self._model_cache = (None,)
+        self._marker_xyz_cache = None
+        self.markers_pane.pending = self._ref_pending
+        self.markers_pane.clearSelection()
+        self.markers_pane.setCurrentCell(-1, -1)
         self.current_photo = -1
         self.photo_view.clear()
         self.ortho_view.reset_project()

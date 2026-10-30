@@ -267,7 +267,10 @@ class OptimizeCamerasDialog(_SettingsDialog):
         from PySide6.QtWidgets import QDoubleSpinBox
         from .georef import DEFAULTS
         s = dict(DEFAULTS); s.update(settings or {})
-        self.use_markers = QCheckBox("Use control markers"); self.use_markers.setChecked(True)
+        self.use_markers = QCheckBox("Use control markers (XYZ + placements on 2 or more aligned photos)")
+        self.use_markers.setChecked(True)
+        self.use_markers.setToolTip("At least 3 non-collinear controls are needed to georeference. "
+                                   "Without sufficient reference data, local bundle adjustment is offered.")
         self.use_cameras = QCheckBox("Use camera GPS (geographic/UTM coordinate systems)")
         self.use_cameras.setChecked(bool(s.get("use_cameras", False)))
         self.bundle = QCheckBox("Bundle adjustment (otherwise similarity transform only)"); self.bundle.setChecked(True)

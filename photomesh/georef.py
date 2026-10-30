@@ -460,6 +460,7 @@ def triangulate_marker(model, projections, names=None, refine=True):
     """Marker position in the model frame from its photo projections."""
     names = names or name_index(model)
     C, D, obs = [], [], []
+    projections = {_stem(lab): value for lab, value in projections.items()}
     for lab, (x, y, *_r) in projections.items():
         iid = names.get(_stem(lab))
         if iid is None:
@@ -474,7 +475,11 @@ def triangulate_marker(model, projections, names=None, refine=True):
     A = np.zeros((3, 3)); b = np.zeros(3)
     for c, d in zip(C, D):
         P = np.eye(3) - np.outer(d, d); A += P; b += P @ c
+    if np.linalg.matrix_rank(A, tol=1e-10) < 3:
+        return None, len(C)
     X = np.linalg.solve(A, b)
+    if not np.isfinite(X).all():
+        return None, len(C)
     if refine:
         for _ in range(5):          # Gauss-Newton on reprojection error
             J, r = [], []
@@ -845,6 +850,110 @@ def write_report(path, rows, crs, pixel=None, counts=None):
                         f"{q['x']:.6f}\t{q['y']:.6f}\t{q['z']:.6f}\n")
 
 
+
+def camera_gps_metric(model, gps, crs, zone_hint=None):
+    """EXIF GPS is lon/lat/alt, including when the project CRS is UTM."""
+    if crs.kind == "local":
+        return {}
+    names, out = name_index(model), {}
+    for label, xyz in (gps or {}).items():
+        iid = names.get(_stem(label))
+        if iid is None or len(xyz) != 3 or any(v is None for v in xyz):
+            continue
+        lon, lat, alt = np.asarray(xyz, float)
+        if not np.isfinite([lon, lat, alt]).all() or abs(lon) > 180 or abs(lat) > 90:
+            continue
+        if crs.kind == "utm":
+            E, N = utm_forward(lat, lon, crs.zone, crs.south)
+            out[iid] = np.array([E, N, alt], float)
+        else:
+            out[iid] = crs.to_metric(np.array([[lon, lat, alt]]), zone_hint)[0]
+    return out
+
+
+def reference_status(model, markers, crs, gps=None):
+    """Count usable controls, not merely imported coordinate rows."""
+    names = name_index(model)
+    refs = [m for m in markers if m.enabled and m.ref is not None]
+    usable = 0
+    for m in refs:
+        X, n = triangulate_marker(model, m.projections, names)
+        if X is not None and n >= 2:
+            usable += 1
+    return {"imported": len(markers), "references": len(refs), "usable": usable,
+            "gps": len(camera_gps_metric(model, gps, crs))}
+
+
+def run_local_task(cfg, log=print):
+    """Adjust without survey constraints; restore the first pose and baseline.
+
+    The similarity gauge is anchored to the first input camera and its longest
+    original baseline. No CRS or metric scale is invented. Dense products must
+    be rebuilt after camera edits.
+    """
+    import shutil
+    t0 = time.perf_counter()
+    if not cfg.get("bundle", True):
+        raise ValueError("Enable bundle adjustment for optimization without reference coordinates.")
+    mdir = cfg["model"]
+    model = cio.read_model(mdir)
+    ids = sorted(model.images)
+    if len(ids) < 2 or not np.any(model.points.track_len() >= 2):
+        raise ValueError("Local optimization needs two aligned cameras and tracked tie points.")
+    first = ids[0]
+    C0, R0 = model.images[first].center().copy(), model.images[first].R().copy()
+    other = max(ids[1:], key=lambda i: np.linalg.norm(model.images[i].center() - C0))
+    baseline = float(np.linalg.norm(model.images[other].center() - C0))
+    if baseline <= 1e-10:
+        raise ValueError("Local optimization needs cameras with a nonzero baseline.")
+    names = name_index(model)
+    markers = [Marker(**m) for m in cfg.get("markers", [])]
+    obs = {}
+    for m in markers:
+        X, _n = triangulate_marker(model, m.projections, names)
+        if m.enabled and X is not None:
+            obs[m.label] = (X, [(names[_stem(k)], v[0], v[1])
+                               for k, v in m.projections.items() if _stem(k) in names])
+    acc = dict(DEFAULTS); acc.update(cfg.get("accuracies") or {})
+    stats = gcp_bundle_adjust(model, obs, {}, {
+        "tie_points": cfg.get("tie_points", 40000), "tie_accuracy": acc["tie_accuracy"],
+        "projection_accuracy": acc["projection_accuracy"],
+        "fit_intrinsics": cfg.get("fit_intrinsics", True),
+        "max_iterations": cfg.get("max_iterations", 30)}, log=log)
+    Cn = model.images[first].center()
+    length = float(np.linalg.norm(model.images[other].center() - Cn))
+    if length <= 1e-10 or not np.isfinite(length):
+        raise ValueError("Optimization produced a degenerate baseline; original model retained.")
+    R = R0.T @ model.images[first].R()
+    scale = baseline / length
+    transform_model(model, scale, R, C0 - scale * R @ Cn)
+    offset = np.asarray(cfg.get("offset") or [0, 0, 0], float)
+    est = {}
+    for m in markers:
+        X, n = triangulate_marker(model, m.projections)
+        est[m.label] = {"est": (X + offset).tolist() if X is not None else None, "n": n, "pix": None}
+    backup = mdir.rstrip("/\\") + "_original"
+    if not os.path.isdir(backup):
+        shutil.copytree(mdir, backup)
+    stage = mdir.rstrip("/\\") + "_optimize_tmp"
+    try:
+        shutil.rmtree(stage, ignore_errors=True)
+        cio.write_model(stage, model)
+        for fn in ("cameras.bin", "images.bin", "points3D.bin"):
+            replace_file(os.path.join(stage, fn), os.path.join(mdir, fn))
+    finally:
+        shutil.rmtree(stage, ignore_errors=True)
+    out = {"local_only": True, "similarity": None, "markers": est,
+           "bundle": {k: v for k, v in stats.items() if k != "markers"},
+           "seconds": time.perf_counter() - t0}
+    if cfg.get("result"):
+        with open(cfg["result"], "w", encoding="utf-8") as f:
+            json.dump(out, f, indent=1, default=float)
+    log("Cameras optimized in the existing frame; no georeferencing was performed. "
+        "Rebuild dense products to use the optimized cameras.")
+    return out
+
+
 # ============================================================ the task
 def run_task(cfg, log=print):
     """Optimize Cameras / georeference (child-process task).
@@ -856,6 +965,8 @@ def run_task(cfg, log=print):
          report (path), result (json path), offset (optional [3]),
          transform_files [list of ply paths to transform with the similarity]
     """
+    if cfg.get("local_only"):
+        return run_local_task(cfg, log)
     import shutil
     import time
     t0 = time.perf_counter()
@@ -886,14 +997,7 @@ def run_task(cfg, log=print):
     log(f"Markers: {len(markers)} imported, {len(tri)} with >=2 projections on aligned photos, "
         f"{len(control)} control, {sum(1 for m in markers if not m.enabled and m.label in tri)} check")
     # ---- initial similarity
-    cam_gps = {}
-    if cfg.get("use_cameras") and gps and crs.kind != "local":
-        for lab, (lon, lat, alt) in gps.items():
-            iid = names.get(_stem(lab))
-            if iid is not None and lat is not None:
-                cam_gps[iid] = crs.to_metric(np.array([[lon, lat, alt]]), zone_hint)[0] if crs.kind == "wgs84" \
-                    else None
-        cam_gps = {k: v for k, v in cam_gps.items() if v is not None}
+    cam_gps = camera_gps_metric(model, gps, crs, zone_hint) if cfg.get("use_cameras") else {}
     use_markers = cfg.get("use_markers", True) and len(control) >= 3
     if use_markers:
         src = np.array([tri[m.label] for m in control]); dst = np.array([metric(m.ref) for m in control])
@@ -903,8 +1007,14 @@ def run_task(cfg, log=print):
         src = np.array([model.images[i].center() for i in ids]); dst = np.array([cam_gps[i] for i in ids])
         what = "camera GPS"
     else:
-        raise RuntimeError("Need at least 3 control markers placed on >=2 aligned photos each "
-                           "(or camera GPS in a geographic/UTM coordinate system)")
+        refs = sum(m.enabled and m.ref is not None for m in markers)
+        raise ValueError(f"Cannot georeference: {len(markers)} markers imported, {refs} enabled with XYZ, "
+                         f"{len(control)} triangulated controls, {len(cam_gps)} usable camera GPS positions. "
+                         "Need 3 non-collinear controls with XYZ and placements on at least 2 aligned photos each, "
+                         "or 3 camera GPS positions in a geographic/UTM CRS. "
+                         "For optimization without georeferencing, use local-only bundle adjustment.")
+    if min(np.linalg.matrix_rank(src - src.mean(0)), np.linalg.matrix_rank(dst - dst.mean(0))) < 2:
+        raise ValueError("Reference positions are collinear; use at least 3 non-collinear control positions.")
     offset = np.asarray(cfg.get("offset") or np.round(dst.mean(0), -2), float)
     s, R, t, inl = robust_helmert(src, dst - offset)
     if what == "control markers" and inl.sum() < len(inl):

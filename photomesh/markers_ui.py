@@ -120,11 +120,6 @@ class MarkerEditMixin:
         self.set_modified()
         self._refresh_markers_pane()
         self._update_view_markers()
-        if hasattr(self, "_update_ortho_markers"):
-            try:
-                self._update_ortho_markers()
-            except Exception as e:  # noqa: BLE001 - display only
-                self.log(f"Ortho markers: {e}")
         self.workspace.refresh(self.project) if hasattr(self, "workspace") else None
         if msg:
             self.log(msg)
@@ -397,6 +392,11 @@ class MarkerEditMixin:
         grid (else the surface below), projected into every photo that sees it
         as unpinned placements - then enter its reference coordinates in the
         Reference pane, pin / refine it on photos and Optimize Cameras."""
+        ms = self._marker_objs()
+        target = next((m for m in ms if m.label == label), None) if label else None
+        if label is not None and target is None:
+            self._marker_error("Place Marker", f"Marker '{label}' is no longer in this chunk.")
+            return None
         src = ""
         if Z is None:
             Z, src = self._ortho_height(X, Y)
@@ -420,11 +420,16 @@ class MarkerEditMixin:
                    f"align the photos first or place the marker inside the covered area")
             self.statusBar().showMessage(msg, 8000); self.log(msg)
             return None
-        ms = self._marker_objs()
         label = label or self._new_label(ms)
         self._markers_snapshot()
-        ms.append(g.Marker(label=label, projections=pred))
-        self._commit_markers(ms, f"Added marker {label} in the ortho view at ({X:.3f}, {Y:.3f}, {Z:.3f}) "
+        if target is None:
+            ms.append(g.Marker(label=label, projections=pred))
+        else:
+            # Ortho placements are predictions, never overwrite manually pinned photo observations.
+            pinned = {g._stem(k): v for k, v in target.projections.items() if len(v) < 3 or v[2]}
+            target.projections = dict(pred, **pinned)
+            target.est = None
+        self._commit_markers(ms, f"{'Placed' if target is not None else 'Added'} marker {label} in the ortho view at ({X:.3f}, {Y:.3f}, {Z:.3f}) "
                                  f"(height from the {src}); projected into {len(pred)} photos (unpinned)")
         self._select_marker_row(label)
         return label
@@ -449,7 +454,7 @@ class MarkerEditMixin:
             if p.item(r, 0) and p.item(r, 0).text() == label:
                 p.blockSignals(True); p.selectRow(r); p.blockSignals(False)
                 break
-        self._update_photo_markers()
+        self._marker_selection_changed()
 
     # ------------------------------------------------------------ rename / remove
     def rename_marker(self, old, new=None):

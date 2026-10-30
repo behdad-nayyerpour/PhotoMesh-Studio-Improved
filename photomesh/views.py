@@ -715,6 +715,7 @@ class ModelView(QWidget):
         self._add("trackball", rings)
 
     def clear(self):
+        self.set_markers(None)
         self._remove_tiled()
         for k in list(self.layers):
             self._remove(k)

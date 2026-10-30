@@ -7,7 +7,7 @@ level is drawn instead, so panning / zooming never blocks the GUI.
 The cursor position is shown in REAL world coordinates (offset included) with
 Z from the DEM (or the orthomosaic's height grid) in a corner overlay and in
 the status bar (coordinatesChanged signal); right-click > Copy Coordinates.
-Without a raster the view shows the cameras and points (planar projection)."""
+Without a raster the view stays empty except for imported vector overlays."""
 from __future__ import annotations
 
 import math
@@ -100,6 +100,7 @@ class OrthoView(QWidget):
     heightReady = Signal(int, object)
     coordinatesChanged = Signal(str)
     shapeClicked = Signal(int)                     # index into the chunk's shape set, -1 = nothing hit
+    placeMarkerRequested = Signal(str, float, float, object)
     addMarkerRequested = Signal(float, float, object)   # world X, Y, Z (None = not loaded / no height)
 
     def __init__(self, parent=None):
@@ -107,6 +108,7 @@ class OrthoView(QWidget):
         self.pts = None
         self.cams = []
         self.markers = []                 # (label, X, Y) world
+        self.active_marker = None
         self.layers = {}                  # kind -> RasterLayer
         self.vis = {"ortho": True, "dem": True, "markers": True, "marker_labels": True, "shapes": True}
         self.shapes = []                  # dicts: index, type, color, width, label, parts [(n,2) world XY], holes
@@ -152,6 +154,8 @@ class OrthoView(QWidget):
         self.cache.clear(); self.pending.clear()
         self.pts = None; self.cams = []; self.markers = []; self.shapes = []
         self.selected_shape = None
+        self.active_marker = None
+        self._status_timer.stop()
         self.center = None; self.scale = 1.0
         self.coord_text = ""; self.last_world = None; self._drag = None
         self.coordinatesChanged.emit("")
@@ -161,6 +165,10 @@ class OrthoView(QWidget):
         """Offset added to local coordinates (cameras/points) to get world coordinates."""
         self.offset = np.zeros(3) if offset is None else np.asarray(offset, float)
         self.geographic, self.unit = bool(geographic), unit
+
+    def set_active_marker(self, label):
+        self.active_marker = label
+        self.update()
 
     def set_markers(self, markers):
         self.markers = list(markers or []); self.update()
@@ -286,10 +294,6 @@ class OrthoView(QWidget):
             bs.append((lay.x0, lay.y1 - lay.H * lay.py, lay.x0 + lay.W * lay.px, lay.y1))
         if not bs:
             xy = []
-            if self.pts is not None and len(self.pts):
-                xy.append(self.pts[:, :2] + self.offset[:2])
-            if self.cams:
-                xy.append(np.array([c[:2] for c in self.cams], float) + self.offset[:2])
             for d in self.shapes:
                 xy += [P[:, :2] for P in d["parts"] if len(P)]
             if not xy:
@@ -436,21 +440,11 @@ class OrthoView(QWidget):
             p.fillRect(self.rect(), QColor(26, 26, 32, int(round(255 * (1.0 - self.surface_opacity)))))
         if not drew:
             p.setPen(QColor(150, 150, 160)); p.setFont(QFont("Sans", 9))
-            msg = ("Ortho view (planar projection) - Workflow > Build Orthomosaic / Build DEM"
+            msg = ("Ortho view - Workflow > Build Orthomosaic / Build DEM"
                    if not self.layers else "Orthomosaic / DEM hidden (toolbar layer toggles)")
             p.drawText(10, 20, msg)
-            if self.pts is not None and len(self.pts):
-                p.setPen(QColor(170, 170, 180))
-                step = max(1, len(self.pts) // 20000)
-                for q in self.pts[::step]:
-                    x, y = self.to_screen(q[0] + self.offset[0], q[1] + self.offset[1])
-                    p.drawPoint(int(x), int(y))
         p.setRenderHint(QPainter.Antialiasing)
         p.setPen(QColor(80, 160, 255)); p.setBrush(QColor(80, 160, 255))
-        if not self.layers:
-            for c in self.cams:
-                x, y = self.to_screen(c[0] + self.offset[0], c[1] + self.offset[1])
-                p.drawEllipse(QPointF(x, y), 3, 3)
         if self.vis.get("shapes", True) and self.shapes:
             self._draw_shapes(p)
         if self.vis.get("markers", True) and self.markers:
@@ -616,7 +610,11 @@ class OrthoView(QWidget):
     def contextMenuEvent(self, e):
         m = QMenu(self)
         X, Y, Z = self.coordinates_at(e.pos().x(), e.pos().y())
-        if self.layers or self.pts is not None:
+        if any(lay.visible for lay in self.layers.values()):
+            if self.active_marker is not None:
+                label = self.active_marker
+                m.addAction(f"Place Marker: {label}").triggered.connect(
+                    lambda: self.placeMarkerRequested.emit(label, X, Y, Z))
             m.addAction("Add Marker").triggered.connect(lambda: self.addMarkerRequested.emit(X, Y, Z))
             m.addSeparator()
         a = m.addAction("Copy Coordinates")
