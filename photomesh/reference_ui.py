@@ -343,7 +343,7 @@ class ReferenceMixin:
             c, k = res.get("control_rmse"), res.get("check_rmse")
             msg = ("Cameras optimized in the existing frame. " if res.get("local_only") else "Georeferenced. ") + (f"Control RMSE {c['total']:.3f} m (n={c['n']}). " if c else "") + \
                 (f"Check RMSE {k['total']:.3f} m (n={k['n']})." if k else "")
-            self.log(msg + f" Report: {cfg['report']}")
+            self.log(msg if res.get("local_only") else msg + f" Report: {cfg['report']}")
             self.statusBar().showMessage(msg, 15000)
         def meta(dt, stages):
             from . import procmeta
@@ -353,7 +353,7 @@ class ReferenceMixin:
                                                                              "fit_intrinsics")},
                             seconds=dt, stages=stages, control_rmse=res.get("control_rmse"),
                             check_rmse=res.get("check_rmse"), bundle=res.get("bundle"),
-                            transformed=cfg["transform_files"])
+                            transformed=[] if cfg.get("local_only") else cfg["transform_files"])
             ch.meta.pop("sparse_stats", None)
         self._run("Optimize Cameras", steps, loaded, meta)
 

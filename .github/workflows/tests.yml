@@ -44,6 +44,9 @@ jobs:
         run: sudo apt-get update -q && sudo apt-get install -y -q --no-install-recommends libegl1 libgl1 libxkbcommon0 libfontconfig1 libdbus-1-3 libgomp1
       - name: Install
         run: pip install -q -r requirements-dev.txt psutil
+      - name: Reference and Ortho regressions
+        timeout-minutes: 3
+        run: python -m pytest -vv -o faulthandler_timeout=60 -p no:cacheprovider tests/test_reference_lifecycle.py
       - name: Tests (no COLMAP / GPU)
         run: |
           set -o pipefail

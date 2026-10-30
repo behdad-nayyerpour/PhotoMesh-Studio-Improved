@@ -841,6 +841,7 @@ class MainWindow(ReferenceMixin, MarkerEditMixin, ShapesMixin, QMainWindow):
                           if self.chunk is chunk and self._view_gen == generation else None)
 
     def _workspace_action(self, action, ci):
+        previous_chunk = self.chunk
         if action == "Add Chunk":
             self.project.chunks.append(Chunk(name=f"Chunk {len(self.project.chunks) + 1}"))
             self.project.active = len(self.project.chunks) - 1
@@ -905,6 +906,8 @@ class MainWindow(ReferenceMixin, MarkerEditMixin, ShapesMixin, QMainWindow):
         elif action.startswith("toggle_camera:"):
             cam = self.project.chunks[ci].cameras[int(action.split(":")[1])]
             cam.enabled = not cam.enabled
+        if self.chunk is not previous_chunk:
+            self._reset_project_views()
         self.set_modified(); self.reload_view()
 
     # ---------------------------------------------------------------- File
