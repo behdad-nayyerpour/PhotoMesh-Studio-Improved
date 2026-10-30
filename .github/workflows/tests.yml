@@ -46,11 +46,11 @@ jobs:
         run: pip install -q -r requirements-dev.txt psutil
       - name: Reference and Ortho regressions
         timeout-minutes: 3
-        run: python -m pytest -vv -o faulthandler_timeout=60 -p no:cacheprovider tests/test_reference_lifecycle.py
+        run: python -m pytest -vv -o faulthandler_timeout=60 -p no:cacheprovider tests/test_reference_lifecycle.py tests/test_release_0117.py
       - name: Tests (no COLMAP / GPU)
         run: |
           set -o pipefail
-          python -m pytest -q -rs -p no:cacheprovider tests 2>&1 | tee pytest.txt
+          python -m pytest -vv -rs -o faulthandler_timeout=120 -p no:cacheprovider tests 2>&1 | tee pytest.txt
       - name: Summary
         if: always()
         run: |
