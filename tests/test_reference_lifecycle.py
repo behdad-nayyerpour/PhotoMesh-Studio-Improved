@@ -112,7 +112,7 @@ def test_ortho_context_places_selected_control_without_creating_duplicate(window
             return menu_exec(self, *args)
     monkeypatch.setattr(orthoview, "QMenu", TestMenu)
     try:
-        ov.contextMenuEvent(QContextMenuEvent(QContextMenuEvent.Mouse, QPoint(20, 20)))
+        ov.contextMenuEvent(QContextMenuEvent(QContextMenuEvent.Mouse, QPoint(20, 20), QPoint(20, 20)))
     finally:
         ov.layers.clear()
     assert "Add Marker" in actions
@@ -172,7 +172,7 @@ def test_local_optimization_reduces_error_and_retains_frame(tmp_path):
     model = synthetic_model(n_img=5, n_pts=250)
     rng = np.random.default_rng(94)
     for im in model.images.values():
-        im.tvec = -im.R() @ (im.center() + rng.normal(0, .02, 3))
+        im.tvec = -im.R() @ (im.center() + rng.normal(0, .2, 3))
     g.retriangulate(model)
     ids = sorted(model.images)
     first = model.images[ids[0]]
@@ -180,6 +180,7 @@ def test_local_optimization_reduces_error_and_retains_frame(tmp_path):
     other = max(ids[1:], key=lambda i: np.linalg.norm(model.images[i].center() - C0))
     baseline = np.linalg.norm(model.images[other].center() - C0)
     err0 = np.mean(cio.observation_errors(model)[0] ** 2)
+    assert err0 > .5  # enough pose error to distinguish adjustment from the 0.3 px noise floor
     path = str(tmp_path / "sparse")
     cio.write_model(path, model)
     cloud = tmp_path / "unchanged.ply"
